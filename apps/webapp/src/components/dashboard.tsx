@@ -82,15 +82,15 @@ export function Dashboard({ company, prefs, open, reset }: Props) {
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Link
-          href="/warm-paths?run=1"
+          href="/warm-paths?run=1&fresh=1"
           className="group card flex min-h-40 animate-rise flex-col justify-between p-5 transition hover:border-edge hover:bg-raise md:col-span-3"
         >
           <span className="label">Next</span>
           <span className="flex items-end justify-between gap-4">
             <span>
-              <span className="block text-lg font-medium tracking-tight">Open warm paths</span>
+              <span className="block text-lg font-medium tracking-tight">Start a new search</span>
               <span className="mt-1 block text-sm text-dim">
-                Leads your investors already know.
+                Find a fresh investor shortlist from this company and its preferences.
               </span>
             </span>
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent text-accent-ink transition group-hover:translate-x-0.5">

@@ -202,8 +202,10 @@ function retryDelayMs(res: Response, baseMs: number, attempt: number): number {
 
 /** Maps a non-2xx Cala response to our error shape. */
 async function toHttpError(res: Response): Promise<HttpError> {
-  const parsed = calaErrorResponseSchema.safeParse(await res.json().catch(() => undefined));
+  const body: unknown = await res.json().catch(() => undefined);
+  const parsed = calaErrorResponseSchema.safeParse(body);
   const calaError = parsed.success ? parsed.data.error : undefined;
+  const detail = upstreamMessage(body);
 
   if (res.status === 429) {
     return new HttpError(429, "rate_limited", "Cala rate limit reached, try again shortly");
@@ -217,9 +219,30 @@ async function toHttpError(res: Response): Promise<HttpError> {
   if (res.status === 400 || res.status === 422) {
     return new HttpError(400, "bad_request", calaError?.message ?? "Cala rejected the request");
   }
+  if (res.status === 402) {
+    return new HttpError(
+      502,
+      "upstream_error",
+      detail ??
+        "Cala rejected the request with HTTP 402. Check the API key's workspace access and plan.",
+    );
+  }
   return new HttpError(
     502,
     "upstream_error",
     calaError?.message ?? `Cala API error (${res.status})`,
   );
+}
+
+function upstreamMessage(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const record = body as Record<string, unknown>;
+  if (typeof record.message === "string" && record.message.trim()) return record.message.trim();
+  if (typeof record.detail === "string" && record.detail.trim()) return record.detail.trim();
+  if (record.error && typeof record.error === "object") {
+    const error = record.error as Record<string, unknown>;
+    if (typeof error.message === "string" && error.message.trim()) return error.message.trim();
+    if (typeof error.detail === "string" && error.detail.trim()) return error.detail.trim();
+  }
+  return null;
 }
