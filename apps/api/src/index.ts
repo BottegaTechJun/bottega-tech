@@ -3,6 +3,8 @@ import { env } from "./config/env";
 import { createCache } from "./lib/cache";
 import { notFound, withMiddleware } from "./lib/http";
 import { startTelemetry } from "./lib/telemetry";
+import { createBrandsRoutes } from "./modules/brands/brands.routes";
+import { createBrandsService } from "./modules/brands/brands.service";
 import { createCalaClient } from "./modules/cala/cala.client";
 import { healthRoutes } from "./modules/health/health.routes";
 import { createCalaTools } from "./modules/matchup/matchup.agent";
@@ -22,6 +24,7 @@ const cala = createCalaClient({
 });
 
 const onboarding = createOnboardingService(cala, { snapshot: demo });
+const brands = createBrandsService(cala);
 
 // Saved profiles and their runs (apps/api/data/profiles, gitignored).
 const profiles = createProfileService({ dir: `${import.meta.dir}/../data/profiles` });
@@ -61,6 +64,7 @@ const server = Bun.serve({
       ...createOnboardingRoutes(onboarding),
       ...createMatchupRoutes(matchup),
       ...createProfileRoutes(profiles),
+      ...createBrandsRoutes(brands),
     },
     middleware,
   ),

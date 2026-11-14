@@ -289,7 +289,7 @@ export function layout(
   let radius = 0;
   for (const [ring, members] of group(center, ids, hop, far)) {
     members.sort(byRole(entities));
-    radius = Math.max(radius + 230, (members.length * 150) / (2 * Math.PI));
+    radius = Math.max(radius + 170, (members.length * 90) / (2 * Math.PI));
     const offset = ring * 0.6;
     members.forEach((id, index) => {
       const angle = offset + (index / members.length) * Math.PI * 2;
@@ -300,30 +300,43 @@ export function layout(
 }
 
 /**
- * Path layout for the answer: one column per hop, read left to right
- * (company, its round, its investor, the shared round, the lead).
- * Each column is ordered by its neighbours' height to keep lines from crossing.
+ * Path layout for the answer, read left to right: the company starts on the left, every
+ * other entity sits one column per hop, and `ends` (the suggested investors) always close
+ * the graph in the last column. Each column is ordered by its neighbours' height.
  */
 export function columns(
   center: string,
   ids: string[],
   links: [string, string][],
   entities: Record<string, Entity>,
+  ends: Set<string> = new Set(),
 ): Record<string, Point> {
-  const { hop, near, far } = hops(center, links);
+  const { near } = hops(center, links);
+  const { hop } = hops(
+    center,
+    links.filter(([a, b]) => !ends.has(a) && !ends.has(b)),
+  );
+  const inner = ids.filter((id) => id !== center && !ends.has(id));
+  const last = Math.max(0, ...inner.map((id) => hop.get(id) ?? 0));
+  const stray = inner.some((id) => !hop.has(id));
+  const col = new Map(hop);
+  for (const id of inner) if (!col.has(id)) col.set(id, last + 1);
+  for (const id of ids) if (ends.has(id)) col.set(id, last + (stray ? 2 : 1));
+  const far = Math.max(1, ...col.values());
+
   const out: Record<string, Point> = { [center]: { x: 0, y: 0 } };
-  for (const [col, members] of group(center, ids, hop, far)) {
+  for (const [index, members] of group(center, ids, col, far)) {
     const height = (id: string) => {
       const ys = [...(near.get(id) ?? [])].flatMap((n) => {
         const p = out[n];
-        return p && (hop.get(n) ?? far) < col ? [p.y] : [];
+        return p && (col.get(n) ?? far) < index ? [p.y] : [];
       });
       return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : 0;
     };
     members.sort((a, b) => height(a) - height(b) || byRole(entities)(a, b));
-    const gap = 96;
-    members.forEach((id, index) => {
-      out[id] = { x: col * 290, y: (index - (members.length - 1) / 2) * gap };
+    const gap = 76;
+    members.forEach((id, i) => {
+      out[id] = { x: index * 200, y: (i - (members.length - 1) / 2) * gap };
     });
   }
   return out;

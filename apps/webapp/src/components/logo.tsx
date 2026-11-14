@@ -16,6 +16,16 @@ const sizes = {
   lg: "size-14 text-base",
 };
 
+/** Favicon URL for a website or bare domain. */
+export const favicon = (website: string) =>
+  `https://www.google.com/s2/favicons?domain=${encodeURIComponent(website)}&sz=128`;
+
+/** Icon sources to try in order: Google's favicon service, then DuckDuckGo's. */
+export const icons = (website: string) => [
+  favicon(website),
+  `https://icons.duckduckgo.com/ip3/${encodeURIComponent(website)}.ico`,
+];
+
 /** Company favicon from its website, falling back to initials. */
 export function Logo({ name, website, size = "md" }: Props) {
   const [failed, setFailed] = useState(false);
@@ -26,7 +36,7 @@ export function Logo({ name, website, size = "md" }: Props) {
     <span className={box}>
       {/* biome-ignore lint/performance/noImgElement: tiny remote favicon, next/image adds nothing here */}
       <img
-        src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(website)}&sz=128`}
+        src={favicon(website)}
         alt=""
         className="size-3/5 object-contain"
         onError={() => setFailed(true)}

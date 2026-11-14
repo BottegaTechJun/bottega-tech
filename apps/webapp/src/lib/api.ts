@@ -1,5 +1,6 @@
 import {
   apiErrorSchema,
+  brandsResponseSchema,
   type CompanyMatches,
   companyMatchesSchema,
   type MatchupReplay,
@@ -74,6 +75,16 @@ async function request<Schema extends z.ZodType>(
 const profiles = new Map<string, Promise<Profile>>();
 
 export const api = {
+  /** Websites Cala knows for these entity ids, for logos. */
+  brands: async (ids: string[], signal?: AbortSignal): Promise<Record<string, string>> =>
+    (
+      await request(brandsResponseSchema, "/api/brands", {
+        method: "POST",
+        body: { ids: ids.slice(0, 100) },
+        ...(signal ? { signal } : {}),
+      })
+    ).sites,
+
   companies: (name: string, signal?: AbortSignal): Promise<CompanyMatches> =>
     request(companyMatchesSchema, `/api/onboarding/companies?${new URLSearchParams({ name })}`, {
       signal,
