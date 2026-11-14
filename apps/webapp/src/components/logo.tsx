@@ -6,10 +6,15 @@ import { initials } from "@/lib/format";
 interface Props {
   name: string;
   website: string | null;
-  size?: "sm" | "md" | "lg";
+  size?: "xs" | "sm" | "md" | "lg";
 }
 
-const sizes = { sm: "size-8 text-[11px]", md: "size-10 text-xs", lg: "size-14 text-base" };
+const sizes = {
+  xs: "size-5 text-[9px] rounded-md!",
+  sm: "size-8 text-[11px]",
+  md: "size-10 text-xs",
+  lg: "size-14 text-base",
+};
 
 /** Company favicon from its website, falling back to initials. */
 export function Logo({ name, website, size = "md" }: Props) {

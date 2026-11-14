@@ -22,3 +22,6 @@ next-env.d.ts
 *.log
 coverage/
 .vercel
+
+# saved matchup agent runs (replayed by the board)
+apps/api/.runs/

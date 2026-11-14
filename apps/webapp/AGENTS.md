@@ -7,7 +7,9 @@ Founder onboarding (Next.js App Router, Tailwind v4, port 3001). Talks only to `
 1. **Find**: company search via `GET /api/onboarding/companies?name=`.
 2. **Confirm**: sourced profile via `GET /api/onboarding/companies/:id` (rounds, investors, team, Slush).
 3. **Preferences**: six one-tap questions (`src/lib/prefs.ts`).
-4. **Done**: home turns into a dashboard (company, facts, preferences, edit), then `/warm-paths` (placeholder).
+4. **Done**: home turns into a dashboard (company, facts, preferences, edit), then `/warm-paths`.
+5. **Warm paths**: canvas of the matchup agent's answer (`components/canvas/`), live SSE trace in a
+   collapsible side panel, last saved run replayed on open.
 
 Steps live in the URL (`/?step=find|confirm|prefs`). Deep links to steps not reached yet redirect to the first open step.
 
