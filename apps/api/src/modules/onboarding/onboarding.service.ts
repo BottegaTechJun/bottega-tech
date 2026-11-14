@@ -3,13 +3,18 @@ import type {
   Cite,
   CompanyMatch,
   CompanyMatches,
+  FounderPreferencesState,
   Investor,
   Person,
   Profile,
   Rank,
   Round,
   TextFact,
+  UpsertFounderPreferences,
+  UpsertUser,
+  User,
 } from "@repo/shared";
+import type { Database } from "../../lib/db";
 import { HttpError } from "../../lib/http-error";
 import type { CalaClient, CalaEntityRetrievalProjection } from "../cala/cala.client";
 import type { CalaEntityIntrospectionResponse } from "../cala/cala.schemas";
@@ -35,8 +40,12 @@ const TTL = 60 * 60 * 1000;
 interface Options {
   /** Precomputed results served instantly (the demo company) */
   snapshot?: unknown;
+  /** Optional Aiven Postgres database for persisting profiles and founder preferences */
+  db?: Database | null;
   now?: () => number;
 }
+
+const EMPTY_PREFS = { round: [], size: [], geo: [], lead: [], sector: [], timing: [] };
 
 /** Builds the onboarding view of a company from Cala's entity endpoints. */
 export function createOnboardingService(cala: CalaClient, options: Options = {}) {
@@ -52,10 +61,12 @@ export function createOnboardingService(cala: CalaClient, options: Options = {})
     },
   };
   const now = options.now ?? Date.now;
+  const db = options.db ?? null;
   const seed: Snapshot = options.snapshot
     ? snapshotSchema.parse(options.snapshot)
     : { searches: {}, profiles: {} };
   const cache = new Map<string, { at: number; value: Promise<unknown> }>();
+  const memoryPrefs = new Map<string, FounderPreferencesState>();
 
   /** Memoizes a lookup for an hour; failed lookups are not kept. */
   function remember<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -257,7 +268,73 @@ export function createOnboardingService(cala: CalaClient, options: Options = {})
     getProfile(id: string): Promise<Profile> {
       const fixed = seed.profiles[id];
       if (fixed) return Promise.resolve(fixed);
-      return remember(`profile:${id}`, () => profile(id));
+      return remember(`profile:${id}`, async () => {
+        if (db) {
+          const cached = await db.loadProfile(id).catch(() => null);
+          if (cached && now() - cached.updatedAt.getTime() < TTL) {
+            return cached.profile;
+          }
+        }
+        const built = await profile(id);
+        await db?.saveProfile(built).catch(() => undefined);
+        return built;
+      });
+    },
+
+    async getPreferences(id: string): Promise<FounderPreferencesState> {
+      if (db) {
+        const stored = await db.loadPreferences(id).catch(() => null);
+        if (stored) {
+          memoryPrefs.set(id, stored);
+          return stored;
+        }
+      }
+      return (
+        memoryPrefs.get(id) ?? {
+          companyId: id,
+          confirmed: false,
+          prefsDone: false,
+          prefs: EMPTY_PREFS,
+          updatedAt: null,
+        }
+      );
+    },
+
+    async savePreferences(
+      id: string,
+      input: UpsertFounderPreferences,
+    ): Promise<FounderPreferencesState> {
+      const next: FounderPreferencesState = {
+        companyId: id,
+        confirmed: input.confirmed,
+        prefsDone: input.prefsDone,
+        prefs: input.prefs,
+        updatedAt: new Date(now()).toISOString(),
+      };
+      memoryPrefs.set(id, next);
+      if (db) {
+        const saved = await db.savePreferences(id, input).catch(() => null);
+        if (saved) {
+          memoryPrefs.set(id, saved);
+          return saved;
+        }
+      }
+      return next;
+    },
+
+    async saveUser(input: UpsertUser): Promise<User> {
+      const fallback: User = {
+        id: input.id,
+        email: input.email,
+        name: input.name ?? null,
+        image: input.image ?? null,
+        companyId: input.companyId ?? null,
+        updatedAt: new Date(now()).toISOString(),
+      };
+      if (db) {
+        return (await db.saveUser(input).catch(() => null)) ?? fallback;
+      }
+      return fallback;
     },
   };
 }

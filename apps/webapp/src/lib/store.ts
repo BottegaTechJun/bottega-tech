@@ -8,6 +8,7 @@ import {
 } from "@repo/shared";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
+import { api } from "./api";
 import { emptyPrefs, type Prefs } from "./prefs";
 
 /** Everything the founder has told us so far. Kept in localStorage, no account needed. */
@@ -81,6 +82,15 @@ export function useProgress() {
         localStorage.setItem(KEY, JSON.stringify(value));
       } catch {
         // Private mode or full storage: keep going in memory.
+      }
+      if (value.company) {
+        api
+          .savePreferences(value.company.id, {
+            confirmed: value.confirmed,
+            prefsDone: value.prefsDone,
+            prefs: value.prefs,
+          })
+          .catch(() => undefined);
       }
       return value;
     });

@@ -122,3 +122,52 @@ export const profileSchema = z.object({
   slush: z.object({ listed: z.boolean(), sources: z.array(citeSchema) }),
 });
 export type Profile = z.infer<typeof profileSchema>;
+
+// ---------- Preferences ----------
+
+export const founderPrefsSchema = z.object({
+  round: z.array(z.string()),
+  size: z.array(z.string()),
+  geo: z.array(z.string()),
+  lead: z.array(z.string()),
+  sector: z.array(z.string()),
+  timing: z.array(z.string()),
+});
+export type FounderPrefs = z.infer<typeof founderPrefsSchema>;
+
+export const founderPreferencesStateSchema = z.object({
+  companyId: z.uuid("companyId must be a UUID"),
+  confirmed: z.boolean(),
+  prefsDone: z.boolean(),
+  prefs: founderPrefsSchema,
+  updatedAt: z.string().nullable().optional(),
+});
+export type FounderPreferencesState = z.infer<typeof founderPreferencesStateSchema>;
+
+export const upsertFounderPreferencesSchema = z.object({
+  confirmed: z.boolean().default(true),
+  prefsDone: z.boolean().default(false),
+  prefs: founderPrefsSchema,
+});
+export type UpsertFounderPreferences = z.infer<typeof upsertFounderPreferencesSchema>;
+
+// ---------- Users (Google OAuth via NextAuth) ----------
+
+export const upsertUserSchema = z.object({
+  id: z.string().trim().min(1),
+  email: z.email(),
+  name: z.string().nullable().optional(),
+  image: z.string().nullable().optional(),
+  companyId: z.uuid().nullable().optional(),
+});
+export type UpsertUser = z.infer<typeof upsertUserSchema>;
+
+export const userSchema = z.object({
+  id: z.string(),
+  email: z.email(),
+  name: z.string().nullable(),
+  image: z.string().nullable(),
+  companyId: z.uuid().nullable(),
+  updatedAt: z.string(),
+});
+export type User = z.infer<typeof userSchema>;
