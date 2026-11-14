@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "cala": {
+      "source": "cala-ai/cala-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "9648f61f1d2df74b21980baf9f48dc44a10356491b7da9c5e48158afc3625c14"
+    }
+  }
+}
