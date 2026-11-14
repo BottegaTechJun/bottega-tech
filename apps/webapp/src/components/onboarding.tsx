@@ -90,7 +90,7 @@ export function Onboarding() {
     if (!saved) return home();
     setState((s) => ({ ...s, profileId: saved.id }));
     announce();
-    router.push(`/warm-paths?profile=${saved.id}`);
+    router.push(`/warm-paths?profile=${saved.id}&run=1`);
   };
 
   const first = questions.findIndex((q) => state.prefs[q.id].length === 0);

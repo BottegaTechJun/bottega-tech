@@ -40,7 +40,9 @@ const small = "h-8 px-3.5 text-[13px]";
 
 export function WarmPaths() {
   const { state, ready } = useProgress();
-  const asked = useSearchParams().get("profile");
+  const params = useSearchParams();
+  const asked = params.get("profile");
+  const auto = useRef(params.get("run") === "1");
   const profileId = ready ? (asked ?? state.profileId) : null;
   const [saved, setSaved] = useState<SavedProfile | null>(null);
   const [missing, setMissing] = useState(false);
@@ -137,6 +139,7 @@ export function WarmPaths() {
         return;
       }
       setSaved(profile);
+      if (auto.current) return;
       const list = await api.runs(profile.id).catch(() => []);
       if (!live) return;
       setRuns(list);
@@ -150,6 +153,14 @@ export function WarmPaths() {
       live = false;
     };
   }, [ready, profileId, legacy]);
+
+  // Fresh from onboarding: start the agent without another click.
+  useEffect(() => {
+    if (!auto.current || !saved) return;
+    auto.current = false;
+    window.history.replaceState(null, "", `/warm-paths?profile=${saved.id}`);
+    void start();
+  }, [saved, start]);
 
   const open = useCallback(
     async (runId: string) => {
