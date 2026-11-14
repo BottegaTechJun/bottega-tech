@@ -2,7 +2,8 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* Dark mode follows the OS setting; shadcn's `dark:` utilities use the same switch. */
+@custom-variant dark (@media (prefers-color-scheme: dark));
 
 /* Maps the design tokens below onto Tailwind utilities (bg-primary, text-muted-foreground, …). */
 @theme inline {
@@ -40,6 +41,7 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-brand-2: var(--brand-2);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -50,87 +52,95 @@
 }
 
 /*
- * Design tokens. This is the one place to restyle the app: every shadcn component
- * reads these variables. Theme: cool slate neutrals with an indigo accent, tuned
- * for dense, data-heavy screens (answers, source lists, result tables).
+ * Design tokens. This is the one place to restyle the app: every shadcn component reads
+ * these variables. Theme: cool slate neutrals, an indigo primary and a cyan second brand
+ * color used only in gradients.
  */
 :root {
-  --radius: 0.5rem;
+  color-scheme: light;
+  --radius: 0.625rem;
 
-  --background: oklch(0.985 0.003 255);
-  --foreground: oklch(0.21 0.03 262);
+  --background: oklch(0.99 0.003 260);
+  --foreground: oklch(0.2 0.03 265);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.21 0.03 262);
+  --card-foreground: oklch(0.2 0.03 265);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.21 0.03 262);
+  --popover-foreground: oklch(0.2 0.03 265);
 
-  --primary: oklch(0.47 0.2 268);
-  --primary-foreground: oklch(0.985 0.005 268);
-  --secondary: oklch(0.955 0.02 268);
-  --secondary-foreground: oklch(0.36 0.14 268);
-  --muted: oklch(0.962 0.006 255);
-  --muted-foreground: oklch(0.5 0.025 260);
-  --accent: oklch(0.955 0.02 268);
-  --accent-foreground: oklch(0.36 0.14 268);
+  --primary: oklch(0.51 0.22 274);
+  --primary-foreground: oklch(0.985 0.005 274);
+  --brand-2: oklch(0.7 0.14 215);
+  --secondary: oklch(0.96 0.018 274);
+  --secondary-foreground: oklch(0.38 0.16 274);
+  --muted: oklch(0.966 0.005 260);
+  --muted-foreground: oklch(0.52 0.025 262);
+  --accent: oklch(0.96 0.018 274);
+  --accent-foreground: oklch(0.38 0.16 274);
   --destructive: oklch(0.577 0.245 27.325);
 
-  --border: oklch(0.915 0.01 258);
-  --input: oklch(0.89 0.012 258);
-  --ring: oklch(0.62 0.16 268);
+  --border: oklch(0.92 0.008 260);
+  --input: oklch(0.9 0.01 260);
+  --ring: oklch(0.62 0.18 274);
 
-  --chart-1: oklch(0.47 0.2 268);
-  --chart-2: oklch(0.6 0.13 200);
-  --chart-3: oklch(0.7 0.15 150);
-  --chart-4: oklch(0.75 0.15 80);
-  --chart-5: oklch(0.63 0.2 20);
+  --chart-1: oklch(0.51 0.22 274);
+  --chart-2: oklch(0.7 0.14 215);
+  --chart-3: oklch(0.72 0.15 160);
+  --chart-4: oklch(0.78 0.15 80);
+  --chart-5: oklch(0.64 0.2 20);
 
-  --sidebar: oklch(0.975 0.005 255);
-  --sidebar-foreground: oklch(0.21 0.03 262);
-  --sidebar-primary: oklch(0.47 0.2 268);
-  --sidebar-primary-foreground: oklch(0.985 0.005 268);
-  --sidebar-accent: oklch(0.955 0.02 268);
-  --sidebar-accent-foreground: oklch(0.36 0.14 268);
-  --sidebar-border: oklch(0.915 0.01 258);
-  --sidebar-ring: oklch(0.62 0.16 268);
+  --sidebar: oklch(0.98 0.004 260);
+  --sidebar-foreground: oklch(0.2 0.03 265);
+  --sidebar-primary: oklch(0.51 0.22 274);
+  --sidebar-primary-foreground: oklch(0.985 0.005 274);
+  --sidebar-accent: oklch(0.96 0.018 274);
+  --sidebar-accent-foreground: oklch(0.38 0.16 274);
+  --sidebar-border: oklch(0.92 0.008 260);
+  --sidebar-ring: oklch(0.62 0.18 274);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* Applied when <html> has the `dark` class. */
-.dark {
-  --background: oklch(0.17 0.02 262);
-  --foreground: oklch(0.96 0.006 255);
-  --card: oklch(0.215 0.024 262);
-  --card-foreground: oklch(0.96 0.006 255);
-  --popover: oklch(0.215 0.024 262);
-  --popover-foreground: oklch(0.96 0.006 255);
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
 
-  --primary: oklch(0.7 0.15 268);
-  --primary-foreground: oklch(0.17 0.03 268);
-  --secondary: oklch(0.29 0.06 268);
-  --secondary-foreground: oklch(0.9 0.05 268);
-  --muted: oklch(0.26 0.022 262);
-  --muted-foreground: oklch(0.71 0.025 258);
-  --accent: oklch(0.29 0.06 268);
-  --accent-foreground: oklch(0.9 0.05 268);
-  --destructive: oklch(0.704 0.191 22.216);
+    --background: oklch(0.16 0.018 268);
+    --foreground: oklch(0.96 0.005 260);
+    --card: oklch(0.2 0.022 268);
+    --card-foreground: oklch(0.96 0.005 260);
+    --popover: oklch(0.2 0.022 268);
+    --popover-foreground: oklch(0.96 0.005 260);
 
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.6 0.15 268);
+    --primary: oklch(0.7 0.16 274);
+    --primary-foreground: oklch(0.16 0.03 274);
+    --brand-2: oklch(0.78 0.12 215);
+    --secondary: oklch(0.28 0.06 274);
+    --secondary-foreground: oklch(0.9 0.05 274);
+    --muted: oklch(0.25 0.02 268);
+    --muted-foreground: oklch(0.7 0.022 262);
+    --accent: oklch(0.28 0.06 274);
+    --accent-foreground: oklch(0.9 0.05 274);
+    --destructive: oklch(0.704 0.191 22.216);
 
-  --chart-1: oklch(0.7 0.15 268);
-  --chart-2: oklch(0.7 0.12 200);
-  --chart-3: oklch(0.75 0.14 150);
-  --chart-4: oklch(0.8 0.14 80);
-  --chart-5: oklch(0.7 0.18 20);
+    --border: oklch(1 0 0 / 9%);
+    --input: oklch(1 0 0 / 14%);
+    --ring: oklch(0.62 0.16 274);
 
-  --sidebar: oklch(0.215 0.024 262);
-  --sidebar-foreground: oklch(0.96 0.006 255);
-  --sidebar-primary: oklch(0.7 0.15 268);
-  --sidebar-primary-foreground: oklch(0.17 0.03 268);
-  --sidebar-accent: oklch(0.29 0.06 268);
-  --sidebar-accent-foreground: oklch(0.9 0.05 268);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.6 0.15 268);
+    --chart-1: oklch(0.7 0.16 274);
+    --chart-2: oklch(0.78 0.12 215);
+    --chart-3: oklch(0.76 0.14 160);
+    --chart-4: oklch(0.8 0.14 80);
+    --chart-5: oklch(0.7 0.18 20);
+
+    --sidebar: oklch(0.2 0.022 268);
+    --sidebar-foreground: oklch(0.96 0.005 260);
+    --sidebar-primary: oklch(0.7 0.16 274);
+    --sidebar-primary-foreground: oklch(0.16 0.03 274);
+    --sidebar-accent: oklch(0.28 0.06 274);
+    --sidebar-accent-foreground: oklch(0.9 0.05 274);
+    --sidebar-border: oklch(1 0 0 / 9%);
+    --sidebar-ring: oklch(0.62 0.16 274);
+  }
 }
 
 @layer base {
@@ -142,43 +152,295 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings:
+      "cv11" 1,
+      "ss01" 1;
   }
   ::selection {
     @apply bg-primary/20;
   }
 }
 
+/* ---------- Motion ---------- */
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes drift {
+  from {
+    transform: translate(-50%, 0) scale(1);
+  }
+  to {
+    transform: translate(-46%, 2rem) scale(1.08);
+  }
+}
+
+@keyframes ping-soft {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+}
+
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
 /*
  * Project-level building blocks. shadcn components cover the widgets; these cover the
- * layout and content patterns around them, so pages stay free of long utility strings.
+ * layout and content patterns around them, so components stay free of long utility strings.
  */
 @layer components {
-  /* Centered page column */
+  /* ----- Page chrome ----- */
+
+  /* Decorative gradient glow + fading grid behind the page */
+  .backdrop {
+    @apply pointer-events-none fixed inset-0 -z-10 overflow-hidden;
+  }
+  .backdrop::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: -18rem;
+    width: min(72rem, 140vw);
+    height: 38rem;
+    transform: translate(-50%, 0);
+    background:
+      radial-gradient(
+        closest-side at 35% 55%,
+        color-mix(in oklch, var(--primary) 26%, transparent),
+        transparent
+      ),
+      radial-gradient(
+        closest-side at 68% 45%,
+        color-mix(in oklch, var(--brand-2) 22%, transparent),
+        transparent
+      );
+    filter: blur(48px);
+    animation: drift 18s ease-in-out infinite alternate;
+  }
+  .backdrop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(
+        to right,
+        color-mix(in oklch, var(--border) 80%, transparent) 1px,
+        transparent 1px
+      ),
+      linear-gradient(
+        to bottom,
+        color-mix(in oklch, var(--border) 80%, transparent) 1px,
+        transparent 1px
+      );
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 70% 55% at 50% 0%, black, transparent 75%);
+  }
+
+  .site-header {
+    @apply sticky top-0 z-20 border-b border-transparent bg-background/60 backdrop-blur-xl;
+  }
+  .site-header-inner {
+    @apply mx-auto flex h-14 w-full max-w-4xl items-center justify-between px-4;
+  }
+  .brand {
+    @apply flex items-center gap-2 font-semibold tracking-tight;
+  }
+  .brand-mark {
+    @apply grid size-7 place-items-center rounded-lg text-primary-foreground shadow-sm shadow-primary/30;
+    background: linear-gradient(135deg, var(--primary), var(--brand-2));
+  }
+  .brand-mark svg {
+    @apply size-4;
+  }
+  .header-link {
+    @apply inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground;
+  }
+  .header-link svg {
+    @apply size-3.5;
+  }
+
   .page {
-    @apply mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-12 sm:py-16;
+    @apply mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-4 pt-14 pb-20 sm:pt-20;
   }
 
-  .page-header {
-    @apply flex flex-col gap-1.5;
-  }
-  .page-title {
-    @apply text-3xl font-semibold tracking-tight;
-  }
-  .page-subtitle {
-    @apply text-sm text-muted-foreground;
+  .site-footer {
+    @apply mx-auto w-full max-w-3xl px-4 pb-8 text-center text-xs text-muted-foreground;
   }
 
-  /* Vertical rhythm between blocks */
+  /* ----- Hero ----- */
+
+  .hero {
+    @apply flex flex-col items-center gap-5 text-center;
+    animation: rise 0.7s var(--ease-out) both;
+  }
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border bg-card/70 px-3 py-1 text-xs font-medium text-muted-foreground shadow-xs backdrop-blur;
+  }
+  .eyebrow-dot {
+    @apply size-1.5 rounded-full bg-primary;
+    animation: ping-soft 1.8s ease-out infinite;
+  }
+  .hero-title {
+    @apply max-w-2xl text-4xl font-semibold tracking-tight text-balance sm:text-5xl;
+    line-height: 1.08;
+  }
+  .gradient-text {
+    background: linear-gradient(120deg, var(--primary), var(--brand-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero-subtitle {
+    @apply max-w-xl text-base text-pretty text-muted-foreground sm:text-lg;
+  }
+
+  /* ----- Composer: mode tabs + input in one panel ----- */
+
+  .explorer {
+    @apply flex flex-col gap-8;
+  }
+  .composer {
+    @apply rounded-2xl border bg-card/80 shadow-xl shadow-primary/5 backdrop-blur-xl transition-[box-shadow,border-color] duration-300 dark:shadow-black/30;
+    animation: rise 0.7s var(--ease-out) 0.08s both;
+  }
+  .composer:focus-within {
+    @apply border-primary/40 ring-4 ring-primary/10;
+  }
+  .composer-bar {
+    @apply flex items-center justify-between gap-3 border-b px-3 py-2.5;
+  }
+  .composer-hint {
+    @apply hidden text-xs text-muted-foreground sm:inline;
+  }
+  .composer-form {
+    @apply flex items-center gap-3 py-2 pr-2 pl-4;
+  }
+  .composer-icon {
+    @apply size-5 shrink-0 text-muted-foreground transition-colors;
+  }
+  .composer:focus-within .composer-icon {
+    @apply text-primary;
+  }
+  .submit-arrow {
+    @apply transition-transform duration-200;
+  }
+  [data-slot="button"]:hover .submit-arrow {
+    @apply translate-x-0.5;
+  }
+
+  /* ----- Empty state ----- */
+
+  .empty-state {
+    @apply flex flex-col items-center gap-3 px-4 py-6 text-center;
+    animation: rise 0.6s var(--ease-out) 0.16s both;
+  }
+  .empty-icon {
+    @apply mb-1 grid size-11 place-items-center rounded-xl border bg-card text-primary shadow-sm;
+  }
+  .empty-icon svg {
+    @apply size-5;
+  }
+  .empty-title {
+    @apply text-sm font-medium;
+  }
+  .empty-text {
+    @apply max-w-sm text-sm text-muted-foreground;
+  }
+  .examples {
+    @apply mt-2 flex max-w-full flex-wrap justify-center gap-2;
+  }
+
+  /* ----- Loading ----- */
+
+  .loading-status {
+    @apply flex items-center gap-2.5 text-sm text-muted-foreground;
+  }
+  .pulse-dot {
+    @apply size-2 rounded-full bg-primary;
+    animation: ping-soft 1.2s ease-out infinite;
+  }
+  /* A light sweep across the skeleton card */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+  .shimmer::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklch, var(--card) 70%, transparent),
+      transparent
+    );
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  /* ----- Results ----- */
+
   .stack {
     @apply flex flex-col gap-4;
   }
 
-  /* Placeholder shown before a request and when a query has no rows */
-  .empty-state {
-    @apply rounded-lg border border-dashed bg-muted/40 px-6 py-12 text-center text-sm text-muted-foreground;
+  /* Fade-and-rise in; children of .stagger enter one after another */
+  .reveal,
+  .stagger > * {
+    animation: rise 0.5s var(--ease-out) both;
+  }
+  .stagger > :nth-child(2) {
+    animation-delay: 80ms;
+  }
+  .stagger > :nth-child(3) {
+    animation-delay: 160ms;
+  }
+  .stagger > :nth-child(n + 4) {
+    animation-delay: 240ms;
   }
 
-  /* Hint under a block: row counts, source publishers */
+  .card-heading {
+    @apply flex items-center gap-2.5;
+  }
+  .card-icon {
+    @apply grid size-7 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground;
+  }
+  .card-icon svg {
+    @apply size-4;
+  }
+
+  /* Thin brand gradient along the top edge of the answer */
+  .answer-card {
+    @apply relative;
+  }
+  .answer-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 2px;
+    background: linear-gradient(90deg, var(--primary), var(--brand-2));
+  }
+
+  .section {
+    @apply flex flex-col gap-2.5;
+  }
+  .section-title {
+    @apply text-xs font-medium tracking-wide text-muted-foreground uppercase;
+  }
+
   .caption {
     @apply text-xs text-muted-foreground;
   }
@@ -186,31 +448,44 @@
   .badge-list {
     @apply flex flex-wrap gap-1.5;
   }
+  .entity-type {
+    @apply font-normal text-muted-foreground;
+  }
 
   .source-list {
-    @apply flex flex-col divide-y;
+    @apply flex flex-col;
   }
-  .source-list > li {
-    @apply flex flex-col gap-0.5 py-2.5 first:pt-0 last:pb-0;
+  .source-item {
+    @apply -mx-2 flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/60;
+  }
+  .source-index {
+    @apply grid size-6 shrink-0 place-items-center rounded-md bg-muted font-mono text-xs text-muted-foreground tabular-nums;
+  }
+  .source-body {
+    @apply flex min-w-0 flex-col gap-0.5;
   }
   .source-link {
     @apply font-medium text-foreground underline-offset-4 hover:text-primary hover:underline;
   }
-
-  /* Wrapper that gives a shadcn Table a border and horizontal scrolling */
-  .table-frame {
-    @apply overflow-hidden rounded-lg border bg-card;
+  /* Inline, so the icon follows the last word when a title wraps */
+  .source-link svg {
+    @apply ml-1 inline size-3 align-baseline opacity-50;
   }
-  .table-frame th {
-    @apply bg-muted/60 text-xs font-medium text-muted-foreground;
+
+  .table-frame {
+    @apply overflow-hidden border-t;
+  }
+  .table-frame thead {
+    @apply bg-muted/50;
   }
   .table-frame td {
     @apply max-w-80 truncate tabular-nums;
   }
 
-  /* Rendered markdown (the search answer) */
+  /* ----- Rendered markdown (the search answer) ----- */
+
   .markdown {
-    @apply text-sm leading-relaxed;
+    @apply text-[0.9375rem] leading-7;
   }
   .markdown > * + * {
     @apply mt-3;
@@ -219,7 +494,7 @@
   .markdown h2,
   .markdown h3,
   .markdown h4 {
-    @apply mt-5 font-semibold tracking-tight first:mt-0;
+    @apply mt-6 font-semibold tracking-tight first:mt-0;
   }
   .markdown h1 {
     @apply text-xl;
@@ -238,30 +513,52 @@
     @apply list-decimal pl-5;
   }
   .markdown li + li {
-    @apply mt-1;
+    @apply mt-1.5;
   }
   .markdown li::marker {
-    @apply text-muted-foreground;
+    @apply text-primary/60;
   }
   .markdown a {
-    @apply font-medium text-primary underline underline-offset-4;
+    @apply font-medium text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary;
   }
   .markdown strong {
-    @apply font-semibold;
+    @apply font-semibold text-foreground;
   }
   .markdown blockquote {
-    @apply border-l-2 pl-4 text-muted-foreground;
+    @apply border-l-2 border-primary/40 pl-4 text-muted-foreground;
   }
   .markdown code {
     @apply rounded-sm bg-muted px-1 py-0.5 font-mono text-[0.85em];
   }
   .markdown pre {
-    @apply overflow-x-auto rounded-md bg-muted p-3;
+    @apply overflow-x-auto rounded-lg bg-muted p-3;
   }
   .markdown pre code {
     @apply bg-transparent p-0;
   }
   .markdown hr {
-    @apply my-5;
+    @apply my-6;
+  }
+  .markdown table {
+    @apply w-full text-sm;
+  }
+  .markdown th,
+  .markdown td {
+    @apply border-b px-2 py-1.5 text-left;
+  }
+}
+
+/* Unlayered, so it wins over the layered rules above without !important. */
+@media (prefers-reduced-motion: reduce) {
+  .backdrop::before,
+  .hero,
+  .composer,
+  .empty-state,
+  .reveal,
+  .stagger > *,
+  .eyebrow-dot,
+  .pulse-dot,
+  .shimmer::after {
+    animation: none;
   }
 }
