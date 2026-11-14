@@ -1,6 +1,6 @@
 import { ArrowUpRightIcon, SparklesIcon } from "lucide-react";
 import Link from "next/link";
-import { Explorer } from "@/components/explorer";
+import { ApiStatus } from "@/components/api-status";
 
 export default function Home() {
   return (
@@ -29,22 +29,15 @@ export default function Home() {
 
       <main className="page">
         <section className="hero">
-          <span className="eyebrow">
-            <span className="eyebrow-dot" />
-            Companies · People · Funding rounds · Investors
-          </span>
+          <ApiStatus />
           <h1 className="hero-title">
-            Ask anything about <span className="gradient-text">the startup world</span>
+            <span className="gradient-text">Bottega</span>
           </h1>
-          <p className="hero-subtitle">
-            Sourced answers from a live knowledge graph, in plain language or as structured queries.
-          </p>
+          <p className="hero-subtitle">Features land here.</p>
         </section>
-
-        <Explorer />
       </main>
 
-      <footer className="site-footer">Answers are sourced from the Cala knowledge graph.</footer>
+      <footer className="site-footer">Data from the Cala knowledge graph.</footer>
     </>
   );
 }

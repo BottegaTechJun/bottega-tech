@@ -1,14 +1,4 @@
-import {
-  apiErrorSchema,
-  type EntitiesResponse,
-  type EntityDetail,
-  entitiesResponseSchema,
-  entityDetailSchema,
-  type QueryResponse,
-  queryResponseSchema,
-  type SearchResponse,
-  searchResponseSchema,
-} from "@repo/shared";
+import { apiErrorSchema, type HealthResponse, healthResponseSchema } from "@repo/shared";
 import type { z } from "zod";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -24,6 +14,7 @@ export class ApiError extends Error {
   }
 }
 
+/** Calls our API and validates the response body against a `@repo/shared` schema. */
 async function request<Schema extends z.ZodType>(
   schema: Schema,
   path: string,
@@ -52,25 +43,14 @@ async function request<Schema extends z.ZodType>(
   return parsed.data;
 }
 
-const post = (input: string): RequestInit => ({
+/** `RequestInit` for a JSON POST, e.g. `request(schema, "/api/x", postJson({ input }))`. */
+export const postJson = (body: unknown): RequestInit => ({
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ input }),
+  body: JSON.stringify(body),
 });
 
+/** One typed function per endpoint. Schemas come from `@repo/shared`. */
 export const api = {
-  search: (input: string): Promise<SearchResponse> =>
-    request(searchResponseSchema, "/api/search", post(input)),
-
-  query: (input: string): Promise<QueryResponse> =>
-    request(queryResponseSchema, "/api/query", post(input)),
-
-  entities: (name: string, limit = 20): Promise<EntitiesResponse> =>
-    request(
-      entitiesResponseSchema,
-      `/api/entities?${new URLSearchParams({ name, limit: String(limit) })}`,
-    ),
-
-  entity: (id: string): Promise<EntityDetail> =>
-    request(entityDetailSchema, `/api/entities/${encodeURIComponent(id)}`),
+  health: (): Promise<HealthResponse> => request(healthResponseSchema, "/health"),
 };

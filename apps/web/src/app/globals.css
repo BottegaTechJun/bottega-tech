@@ -308,40 +308,6 @@
     @apply max-w-xl text-base text-pretty text-muted-foreground sm:text-lg;
   }
 
-  /* ----- Composer: mode tabs + input in one panel ----- */
-
-  .explorer {
-    @apply flex flex-col gap-8;
-  }
-  .composer {
-    @apply rounded-2xl border bg-card/80 shadow-xl shadow-primary/5 backdrop-blur-xl transition-[box-shadow,border-color] duration-300 dark:shadow-black/30;
-    animation: rise 0.7s var(--ease-out) 0.08s both;
-  }
-  .composer:focus-within {
-    @apply border-primary/40 ring-4 ring-primary/10;
-  }
-  .composer-bar {
-    @apply flex items-center justify-between gap-3 border-b px-3 py-2.5;
-  }
-  .composer-hint {
-    @apply hidden text-xs text-muted-foreground sm:inline;
-  }
-  .composer-form {
-    @apply flex items-center gap-3 py-2 pr-2 pl-4;
-  }
-  .composer-icon {
-    @apply size-5 shrink-0 text-muted-foreground transition-colors;
-  }
-  .composer:focus-within .composer-icon {
-    @apply text-primary;
-  }
-  .submit-arrow {
-    @apply transition-transform duration-200;
-  }
-  [data-slot="button"]:hover .submit-arrow {
-    @apply translate-x-0.5;
-  }
-
   /* ----- Empty state ----- */
 
   .empty-state {
@@ -359,9 +325,6 @@
   }
   .empty-text {
     @apply max-w-sm text-sm text-muted-foreground;
-  }
-  .examples {
-    @apply mt-2 flex max-w-full flex-wrap justify-center gap-2;
   }
 
   /* ----- Loading ----- */
@@ -422,18 +385,6 @@
     @apply size-4;
   }
 
-  /* Thin brand gradient along the top edge of the answer */
-  .answer-card {
-    @apply relative;
-  }
-  .answer-card::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto;
-    height: 2px;
-    background: linear-gradient(90deg, var(--primary), var(--brand-2));
-  }
-
   .section {
     @apply flex flex-col gap-2.5;
   }
@@ -448,111 +399,12 @@
   .badge-list {
     @apply flex flex-wrap gap-1.5;
   }
-  .entity-type {
-    @apply font-normal text-muted-foreground;
-  }
-
-  .source-list {
-    @apply flex flex-col;
-  }
-  .source-item {
-    @apply -mx-2 flex items-start gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/60;
-  }
-  .source-index {
-    @apply grid size-6 shrink-0 place-items-center rounded-md bg-muted font-mono text-xs text-muted-foreground tabular-nums;
-  }
-  .source-body {
-    @apply flex min-w-0 flex-col gap-0.5;
-  }
-  .source-link {
-    @apply font-medium text-foreground underline-offset-4 hover:text-primary hover:underline;
-  }
-  /* Inline, so the icon follows the last word when a title wraps */
-  .source-link svg {
-    @apply ml-1 inline size-3 align-baseline opacity-50;
-  }
-
-  .table-frame {
-    @apply overflow-hidden border-t;
-  }
-  .table-frame thead {
-    @apply bg-muted/50;
-  }
-  .table-frame td {
-    @apply max-w-80 truncate tabular-nums;
-  }
-
-  /* ----- Rendered markdown (the search answer) ----- */
-
-  .markdown {
-    @apply text-[0.9375rem] leading-7;
-  }
-  .markdown > * + * {
-    @apply mt-3;
-  }
-  .markdown h1,
-  .markdown h2,
-  .markdown h3,
-  .markdown h4 {
-    @apply mt-6 font-semibold tracking-tight first:mt-0;
-  }
-  .markdown h1 {
-    @apply text-xl;
-  }
-  .markdown h2 {
-    @apply text-lg;
-  }
-  .markdown h3,
-  .markdown h4 {
-    @apply text-base;
-  }
-  .markdown ul {
-    @apply list-disc pl-5;
-  }
-  .markdown ol {
-    @apply list-decimal pl-5;
-  }
-  .markdown li + li {
-    @apply mt-1.5;
-  }
-  .markdown li::marker {
-    @apply text-primary/60;
-  }
-  .markdown a {
-    @apply font-medium text-primary underline decoration-primary/30 underline-offset-4 hover:decoration-primary;
-  }
-  .markdown strong {
-    @apply font-semibold text-foreground;
-  }
-  .markdown blockquote {
-    @apply border-l-2 border-primary/40 pl-4 text-muted-foreground;
-  }
-  .markdown code {
-    @apply rounded-sm bg-muted px-1 py-0.5 font-mono text-[0.85em];
-  }
-  .markdown pre {
-    @apply overflow-x-auto rounded-lg bg-muted p-3;
-  }
-  .markdown pre code {
-    @apply bg-transparent p-0;
-  }
-  .markdown hr {
-    @apply my-6;
-  }
-  .markdown table {
-    @apply w-full text-sm;
-  }
-  .markdown th,
-  .markdown td {
-    @apply border-b px-2 py-1.5 text-left;
-  }
 }
 
 /* Unlayered, so it wins over the layered rules above without !important. */
 @media (prefers-reduced-motion: reduce) {
   .backdrop::before,
   .hero,
-  .composer,
   .empty-state,
   .reveal,
   .stagger > *,

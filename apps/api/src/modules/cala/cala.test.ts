@@ -2,7 +2,6 @@ import { describe, expect, mock, test } from "bun:test";
 import { createCache, sha256Key, type ValkeyStore } from "../../lib/cache";
 import { HttpError } from "../../lib/http-error";
 import { createCalaClient } from "./cala.client";
-import { createCalaService } from "./cala.service";
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), {
@@ -296,68 +295,5 @@ describe("cala client", () => {
 
     expect(first).toEqual(second);
     expect(fetch).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("cala service", () => {
-  test("normalizes a search answer: one source per document, camelCase entities", async () => {
-    const service = createCalaService(clientWith(mockFetch(json(searchFixture))));
-
-    expect(await service.search("climate rounds")).toEqual({
-      answer: "**Altano Energy** raised €60M.",
-      sources: [
-        {
-          name: "Sifted",
-          url: "https://sifted.eu",
-          document: { name: "Top climate rounds", url: "https://sifted.eu/a" },
-        },
-      ],
-      entities: [{ id: "e1", name: "Altano Energy", entityType: "Company", mentions: ["Altano"] }],
-    });
-  });
-
-  test("keeps free-form query rows and turns null entities into []", async () => {
-    const rows = [{ name: "Acme", funding: 12_000_000, tags: ["ai"] }, { name: "Beta" }];
-    const service = createCalaService(
-      clientWith(mockFetch(json({ results: rows, entities: null }))),
-    );
-
-    expect(await service.query("startups.location=Spain")).toEqual({ rows, entities: [] });
-  });
-
-  test("normalizes entity search results", async () => {
-    const service = createCalaService(
-      clientWith(
-        mockFetch(json({ entities: [{ id: "e1", name: "OpenAI", entity_type: "Company" }] })),
-      ),
-    );
-
-    expect(await service.searchEntities("OpenAI", 20)).toEqual({
-      entities: [{ id: "e1", name: "OpenAI", entityType: "Company", description: null }],
-    });
-  });
-
-  test("normalizes an entity and fills missing sections with defaults", async () => {
-    const service = createCalaService(
-      clientWith(
-        mockFetch(
-          json({
-            id: "e1",
-            name: "OpenAI",
-            entity_type: "Company",
-            properties: { name: "OpenAI" },
-          }),
-        ),
-      ),
-    );
-
-    expect(await service.getEntity("e1")).toEqual({
-      id: "e1",
-      name: "OpenAI",
-      entityType: "Company",
-      properties: { name: "OpenAI" },
-      relationships: { outgoing: {}, incoming: {} },
-      numericalObservations: [],
-    });
   });
 });

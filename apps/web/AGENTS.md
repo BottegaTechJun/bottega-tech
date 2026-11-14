@@ -11,12 +11,11 @@ src/
     page.tsx          the only page
     globals.css       design tokens + project component classes (the single place for styling)
   components/
-    explorer.tsx      client component: mode tabs, input, request state
-    search-result.tsx markdown answer, entity badges, sources
-    query-result.tsx  table built from the returned row keys
+    api-status.tsx    pings GET /health on load (checks the web → API wiring)
     ui/               shadcn components (generated; do not hand-edit)
   lib/
-    api.ts            typed API client; validates every response with @repo/shared schemas
+    api.ts            typed API client; validates every response with @repo/shared schemas.
+                      Add one function per endpoint to the `api` object.
 ```
 
 ## Notes

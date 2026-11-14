@@ -1,17 +1,14 @@
 # Bottega
 
-Hackathon MVP: ask questions about companies, people, funding rounds and investors, answered
-from the [Cala](https://cala.ai) knowledge graph.
+Hackathon MVP on top of the [Cala](https://cala.ai) knowledge graph (companies, people,
+funding rounds, investors). The repo is boilerplate ready for features; none are built yet.
 
-## MVP flow
+## Request flow
 
-1. The user types a question in the frontend (`apps/web`).
-2. The frontend calls **our** backend (`apps/api`).
-3. The backend calls the Cala API with the secret key and normalizes the response.
-4. The frontend validates the response and renders it.
-
-Two modes: **Search** (natural language → markdown answer, sources, entities) and **Query**
-(structured Dot-Notation, e.g. `startups.location=Spain.funding>10M.funding<50M` → table).
+1. The frontend (`apps/web`) calls **our** backend (`apps/api`) through `src/lib/api.ts`.
+2. The backend calls the Cala API with the secret key and normalizes the response into a
+   `@repo/shared` contract.
+3. The frontend validates the response against the same contract and renders it.
 
 ## Repo map
 
