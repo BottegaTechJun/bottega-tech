@@ -1,6 +1,6 @@
 "use client";
 
-import type { CompanyMatch, Entity, SearchSessionInput, SearchSessionSummary } from "@repo/shared";
+import type { Entity, SearchSessionInput, SearchSessionSummary } from "@repo/shared";
 import { ReactFlowProvider } from "@xyflow/react";
 import {
   ArrowLeft,
@@ -32,15 +32,6 @@ import { SidePanel } from "./side-panel";
 import { SessionLink, TraceList } from "./trace-panel";
 import { Wants } from "./wants";
 
-/** Demo company from docs/CONTEXT.md §2, used when onboarding has not picked one. */
-const DEMO: CompanyMatch = {
-  id: "6ebd9536-fcc5-5921-8938-ce3497eb6262",
-  name: "In Parallel",
-  description: null,
-  hq: null,
-  website: "in-parallel.com",
-};
-
 const small = "h-8 px-3.5 text-[13px]";
 
 /** Keep refreshes on the saved session without retriggering the App Router loader. */
@@ -64,7 +55,7 @@ export function WarmPaths() {
   const [missing, setMissing] = useState(false);
   const [runs, setRuns] = useState<SearchSessionSummary[]>([]);
   const [shown, setShown] = useState<string | null>(null);
-  const company = context?.company ?? state.company ?? DEMO;
+  const company = context?.company ?? state.company;
   const [run, dispatch] = useReducer(
     (
       current: Run,
@@ -86,6 +77,7 @@ export function WarmPaths() {
   /** Runs the agent; with a question, as a follow-up on the run on screen. */
   const start = useCallback(
     async (question?: string) => {
+      if (!company) return;
       if (authStatus !== "authenticated" || !authSession?.user) {
         void signIn("google");
         return;
@@ -241,7 +233,7 @@ export function WarmPaths() {
   );
   const [sites, setSites] = useState<Record<string, string>>({});
   const domains = useMemo(
-    () => brands(run, company, context?.facts ?? null, sites),
+    () => (company ? brands(run, company, context?.facts ?? null, sites) : {}),
     [run, company, context, sites],
   );
   // Logos for the answer's companies and investors come from Cala websites, not the agent.
@@ -273,13 +265,16 @@ export function WarmPaths() {
     setPicked(null);
   }, [pick]);
   const routes = useMemo(
-    () => (pick ? (brief(run, pick, company.id)?.routes ?? []) : []),
-    [run, pick, company.id],
+    () => (pick && company ? (brief(run, pick, company.id)?.routes ?? []) : []),
+    [run, pick, company],
   );
   const active = hovered ?? picked;
   const paths = useMemo(
-    () => (graph?.investors ?? []).flatMap((p) => brief(run, p.id, company.id)?.routes ?? []),
-    [run, graph, company.id],
+    () =>
+      company
+        ? (graph?.investors ?? []).flatMap((p) => brief(run, p.id, company.id)?.routes ?? [])
+        : [],
+    [run, graph, company],
   );
   const focus = useMemo(() => (pick ? { routes, active } : null), [pick, routes, active]);
   const investors = (graph?.investors ?? []).flatMap((p) =>
@@ -296,6 +291,24 @@ export function WarmPaths() {
     setCard(null);
   }, []);
   const routeProps = { routes, picked, hover: setHovered, pick: setPicked };
+
+  if (!company) {
+    return (
+      <Shell active="paths">
+        <div className="grid min-h-[100dvh] place-items-center px-6">
+          <div className="max-w-sm text-center">
+            <h1 className="text-lg font-semibold tracking-tight">Choose a company first</h1>
+            <p className="mt-2 text-sm leading-relaxed text-dim">
+              Start from Home to select your company and shape the investor search.
+            </p>
+            <a href="/" className="btn-primary mt-5 h-9 px-4 text-[13px]">
+              Go to Home
+            </a>
+          </div>
+        </div>
+      </Shell>
+    );
+  }
 
   const aside = (
     <SidePanel
