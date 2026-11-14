@@ -34,6 +34,7 @@ function payloads(output: unknown): unknown[] {
   if (record.structuredContent !== undefined) out.push(record.structuredContent);
   else if (Array.isArray(record.content)) {
     for (const part of record.content) {
+      if (!part || typeof part !== "object") continue;
       const text = (part as { text?: unknown }).text;
       if (typeof text !== "string") continue;
       try {
@@ -78,6 +79,7 @@ export function harvest(output: unknown): Harvest {
       for (const [direction, groups] of Object.entries(retrieval.data.relationships)) {
         if (direction !== "outgoing" && direction !== "incoming") continue;
         for (const [relation, items] of Object.entries(groups as Record<string, unknown[]>)) {
+          if (!Array.isArray(items)) continue;
           for (const item of items) {
             const link = rawLinkSchema.safeParse(item);
             if (!link.success || !UUID.test(link.data.id)) continue;
