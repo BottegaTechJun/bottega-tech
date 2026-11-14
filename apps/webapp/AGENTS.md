@@ -7,16 +7,18 @@ Founder onboarding (Next.js App Router, Tailwind v4, port 3001). Talks only to `
 1. **Find**: company search via `GET /api/onboarding/companies?name=`.
 2. **Confirm**: sourced profile via `GET /api/onboarding/companies/:id` (rounds, investors, team, Slush).
 3. **Preferences**: six one-tap questions (`src/lib/prefs.ts`).
-4. **Done**: summary, then `/warm-paths` (placeholder).
+4. **Done**: home turns into a dashboard (company, facts, preferences, edit), then `/warm-paths` (placeholder).
 
-Progress lives in localStorage (`src/lib/store.ts`). No accounts.
+Steps live in the URL (`/?step=find|confirm|prefs`). Deep links to steps not reached yet redirect to the first open step.
+
+Progress lives in localStorage (`src/lib/store.ts`), validated with zod on read. No accounts.
 
 ## Layout
 
 ```
 src/
   app/            layout (Geist fonts), globals.css (tokens + @utility classes), pages
-  components/     shell, progress-bar, step-cards, find/confirm/prefs/done steps, source badge, logo
+  components/     shell, progress-bar, step-cards, find/confirm/prefs steps, dashboard, source badge, logo
   lib/            api.ts (zod-validated client), format.ts, prefs.ts, store.ts
 ```
 
