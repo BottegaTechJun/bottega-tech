@@ -39,12 +39,18 @@ interface MiddlewareOptions {
 
 /** CORS_ORIGIN may list several origins, comma separated; the request's origin is echoed if allowed. */
 function corsHeaders(corsOrigin: string, origin: string | null): Record<string, string> {
-  const allowed = corsOrigin.split(",").map((item) => item.trim());
-  const match = origin && allowed.includes(origin) ? origin : (allowed[0] ?? "");
+  const allowed = corsOrigin
+    .split(",")
+    .map((item) => item.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  const normalizedOrigin = origin ? origin.replace(/\/+$/, "") : null;
+  const match =
+    origin && normalizedOrigin && allowed.includes(normalizedOrigin) ? origin : (allowed[0] ?? "");
   return {
     "Access-Control-Allow-Origin": match,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    "X-Content-Type-Options": "nosniff",
     Vary: "Origin",
   };
 }
