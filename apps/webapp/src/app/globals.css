@@ -100,3 +100,26 @@ body {
   background: linear-gradient(90deg, #18181a 0%, #222225 50%, #18181a 100%);
   background-size: 200% 100%;
 }
+
+/* Playground canvas: React Flow on the app's dark tokens. */
+.board {
+  --xy-background-color: transparent;
+  --xy-edge-stroke: rgb(255 255 255 / 0.2);
+  background: transparent;
+}
+
+.board .react-flow__node {
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.board .react-flow__node.dragging {
+  transition: none;
+}
+
+.board .react-flow__controls {
+  @apply overflow-hidden rounded-xl border border-line shadow-none;
+}
+
+.board .react-flow__controls-button {
+  @apply border-line bg-panel text-dim hover:bg-raise;
+}

@@ -29,6 +29,8 @@ src/
 | `GET /health`                         | `{ status: "ok" }` (`HealthResponse`)       |
 | `GET /api/onboarding/companies?name=` | Company search (entity search + retrieval)  |
 | `GET /api/onboarding/companies/:id`   | Sourced profile (introspection + retrieval) |
+| `POST /api/matchup`                   | Investor matchup agent, streamed over SSE   |
+| `GET /api/matchup/:id/last`           | Last saved matchup run for a company        |
 
 ## Notes
 
@@ -50,4 +52,7 @@ src/
 - **Onboarding** serves `modules/onboarding/fixtures/demo.json` first (the demo company, instant),
   then caches live results for an hour. Refresh the fixture with `bun run snapshot`.
 - `CORS_ORIGIN` accepts a comma-separated list (web on :3000, webapp on :3001).
+- **Matchup** (`modules/matchup/`) runs a Gemini `ToolLoopAgent` over Cala's MCP tools and grounds
+  its answer in the tool results (unknown ids and URLs are dropped). Each run is traced in Langfuse
+  (one session per lookup) and saved to `apps/api/.runs/` so the board can replay it.
 - Cala reference: the `cala` skill in `.claude/skills/cala`, or https://api.cala.ai/openapi.json.

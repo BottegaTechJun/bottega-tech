@@ -5,11 +5,13 @@ interface Props {
   active: "start" | "paths";
   /** Shown at the bottom of the sidebar once a company is picked */
   company?: React.ReactNode;
+  /** Panel beside the main panel, on the page background (e.g. the agent trace) */
+  aside?: React.ReactNode;
   children: React.ReactNode;
 }
 
 /** Cala-console style frame: dark sidebar on the left, rounded inset panel for content. */
-export function Shell({ active, company, children }: Props) {
+export function Shell({ active, company, aside, children }: Props) {
   const items = [
     { id: "start", href: "/", label: "Home", icon: Rocket },
     { id: "paths", href: "/warm-paths", label: "Warm paths", icon: Network },
@@ -75,8 +77,11 @@ export function Shell({ active, company, children }: Props) {
             </Link>
           ))}
         </nav>
-        <div className="min-h-[100dvh] bg-panel md:min-h-[calc(100dvh-1rem)] md:rounded-[20px] md:border md:border-line">
-          {children}
+        <div className="flex min-w-0">
+          <div className="min-h-[100dvh] min-w-0 flex-1 bg-panel md:min-h-[calc(100dvh-1rem)] md:overflow-hidden md:rounded-[20px] md:border md:border-line">
+            {children}
+          </div>
+          {aside}
         </div>
       </main>
     </div>
