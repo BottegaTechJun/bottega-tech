@@ -17,8 +17,6 @@ type Result =
   | { kind: "error"; message: string }
   | { kind: "done"; companies: CompanyMatch[] };
 
-const DEMO = "In Parallel";
-
 export function FindStep({ initial, pick }: Props) {
   const [name, setName] = useState(initial);
   const [result, setResult] = useState<Result>({ kind: "idle" });
@@ -85,12 +83,9 @@ export function FindStep({ initial, pick }: Props) {
       {result.kind === "idle" && short && <p className="mt-4 text-sm text-faint">Keep typing.</p>}
 
       {result.kind === "idle" && !short && (
-        <div className="mt-4 flex items-center gap-2 text-sm text-faint">
-          Try
-          <button type="button" className="chip h-8" onClick={() => setName(DEMO)}>
-            {DEMO}
-          </button>
-        </div>
+        <p className="mt-4 text-sm text-faint">
+          Search by your company&apos;s name to find its profile.
+        </p>
       )}
 
       <div className="mt-4 flex flex-col gap-1.5">
@@ -114,17 +109,7 @@ export function FindStep({ initial, pick }: Props) {
         {result.kind === "done" && result.companies.length === 0 && (
           <div className="card px-5 py-4 text-sm">
             <p className="text-dim">No company with that name in Cala.</p>
-            <p className="mt-1 text-faint">
-              Try the legal name or drop suffixes like Oy or Ltd. Or{" "}
-              <button
-                type="button"
-                className="text-text underline-offset-4 hover:underline"
-                onClick={() => setName(DEMO)}
-              >
-                try {DEMO}
-              </button>
-              .
-            </p>
+            <p className="mt-1 text-faint">Try the legal name or drop suffixes like Oy or Ltd.</p>
           </div>
         )}
 

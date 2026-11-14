@@ -8,7 +8,6 @@ import { fresh, type Progress, useProgress } from "@/lib/store";
 import { ConfirmStep } from "./confirm-step";
 import { Dashboard } from "./dashboard";
 import { FindStep } from "./find-step";
-import { Logo } from "./logo";
 import { PrefsStep } from "./prefs-step";
 import { ProgressBar } from "./progress-bar";
 import { Shell } from "./shell";
@@ -65,16 +64,6 @@ export function Onboarding() {
         ? "prefs"
         : "done";
 
-  const chip = state.company && (
-    <div className="flex items-center gap-2.5 rounded-xl border border-line bg-raise/60 p-2">
-      <Logo name={state.company.name} website={state.company.website} size="sm" />
-      <div className="min-w-0">
-        <p className="truncate text-sm">{state.company.name}</p>
-        <p className="truncate text-xs text-faint">{state.company.hq ?? "Your company"}</p>
-      </div>
-    </div>
-  );
-
   /** Keep onboarding as a local draft; an owned search is created when matching starts. */
   const save = async () => {
     const { company } = latest.current;
@@ -86,7 +75,7 @@ export function Onboarding() {
   const first = questions.findIndex((q) => state.prefs[q.id].length === 0);
 
   return (
-    <Shell active="start" company={chip}>
+    <Shell active="start">
       <div className="mx-auto flex w-full max-w-5xl flex-col px-4 py-8 md:px-10 md:py-12">
         {!(view === "home" && complete) && (
           <>
