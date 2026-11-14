@@ -14,7 +14,8 @@ export function createCalaTools(apiKey: string) {
       maxRetries: 2,
     });
     try {
-      return await (await client).tools();
+      const { knowledge_search: _slow, ...rest } = await (await client).tools();
+      return rest;
     } catch (err) {
       client = undefined;
       throw err;
