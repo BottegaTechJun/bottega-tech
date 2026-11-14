@@ -7,6 +7,8 @@ to a small Bun backend, which queries the [Cala](https://cala.ai) knowledge grap
 browser → apps/web (:3000) → apps/api (:4000) → api.cala.ai
 ```
 
+test
+
 ## Setup
 
 Requires [Bun](https://bun.sh) 1.3+.
