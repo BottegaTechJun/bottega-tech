@@ -65,6 +65,20 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function toolErrorText(output: unknown): string | null {
+  if (!output || typeof output !== "object") return null;
+  const content = (output as { content?: unknown }).content;
+  if (!Array.isArray(content)) return null;
+  const texts = content
+    .map((item) =>
+      item && typeof item === "object" && typeof (item as { text?: unknown }).text === "string"
+        ? (item as { text: string }).text.trim()
+        : "",
+    )
+    .filter(Boolean);
+  return texts.length ? texts.join(" ") : null;
+}
+
 const ROUNDS: Record<string, string> = { A: "Series A", B: "Series B", C: "Series C" };
 const ROLES: Record<string, string> = {
   lead: "a lead",
@@ -119,7 +133,7 @@ export function createMatchupService(deps: MatchupDeps) {
       send(event);
     };
     const sessionId = req.sessionId ?? `warmup-${crypto.randomUUID()}`;
-    const profile = req.profileId ? ((await deps.profiles?.get(req.profileId)) ?? null) : null;
+    let profile: SavedProfile | null = null;
     emit({
       type: "start",
       sessionId,
@@ -127,37 +141,51 @@ export function createMatchupService(deps: MatchupDeps) {
       traceUrl: deps.sessionUrl?.(sessionId) ?? null,
     });
 
-    await startActiveObservation(
-      "investor-matchup",
-      (root) =>
-        propagateAttributes(
-          {
-            sessionId,
-            traceName: "investor-matchup",
-            tags: req.profileId ? ["matchup", `profile:${req.profileId}`] : ["matchup"],
-            metadata: {
-              companyId: req.companyId,
-              model: modelId,
-              ...(req.profileId ? { profileId: req.profileId } : {}),
+    try {
+      await startActiveObservation(
+        "investor-matchup",
+        (root) =>
+          propagateAttributes(
+            {
+              sessionId,
+              traceName: "investor-matchup",
+              tags: req.profileId ? ["matchup", `profile:${req.profileId}`] : ["matchup"],
+              metadata: {
+                companyId: req.companyId,
+                model: modelId,
+                ...(req.profileId ? { profileId: req.profileId } : {}),
+              },
             },
-          },
-          async () => {
-            const prompt = brief(req, profile);
-            root.update({ input: { companyId: req.companyId, profileId: req.profileId, prompt } });
-            try {
-              if (req.profileId && !profile) throw new Error("No saved profile with this id");
-              const graph = await loop(req, prompt, sessionId, emit, signal);
-              root.update({ output: graph });
-            } catch (err) {
-              const text = signal?.aborted ? "Run stopped" : message(err);
-              root.update({ level: "ERROR", statusMessage: text });
-              emit({ type: "error", message: text });
-            }
-          },
-        ),
-      { asType: "agent" },
-    );
-    await deps.after?.().catch(() => undefined);
+            async () => {
+              try {
+                profile = req.profileId
+                  ? ((await deps.profiles?.get(req.profileId)) ?? null)
+                  : null;
+                const prompt = brief(req, profile);
+                root.update({
+                  input: { companyId: req.companyId, profileId: req.profileId, prompt },
+                });
+                if (req.profileId && !profile) throw new Error("No saved profile with this id");
+                const graph = await loop(req, prompt, sessionId, emit, signal);
+                root.update({ output: graph });
+              } catch (err) {
+                const text = signal?.aborted ? "Run stopped" : message(err);
+                root.update({ level: "ERROR", statusMessage: text });
+                emit({ type: "error", message: text });
+              }
+            },
+          ),
+        { asType: "agent" },
+      );
+    } catch (err) {
+      const text = signal?.aborted ? "Run stopped" : message(err);
+      emit({ type: "error", message: text });
+    }
+    try {
+      await deps.after?.();
+    } catch {
+      // Ignore telemetry flush failures
+    }
     await keep(req, profile, sessionId, events).catch((err) =>
       console.error("Saving run failed", err),
     );
@@ -257,7 +285,7 @@ export function createMatchupService(deps: MatchupDeps) {
             tool: part.toolName,
             ok: !failed,
             summary: failed
-              ? "Cala returned an error"
+              ? clip(toolErrorText(part.output) ?? "Cala returned an error", 160)
               : part.toolName === "entity_introspection"
                 ? "Schema read"
                 : found.entities.length

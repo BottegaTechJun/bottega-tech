@@ -32,6 +32,21 @@ export async function streamMatchup(
     throw new Error(parsed.success ? parsed.data.error.message : `Request failed (${res.status})`);
   }
 
+  const dispatch = (frame: string) => {
+    const data = frame
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim())
+      .join("");
+    if (!data) return;
+    try {
+      const parsed = matchupEventSchema.safeParse(JSON.parse(data));
+      if (parsed.success) onEvent(parsed.data);
+    } catch {
+      // Ignore malformed or truncated SSE payloads
+    }
+  };
+
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
   for (;;) {
@@ -43,16 +58,10 @@ export async function streamMatchup(
       const frame = buffer.slice(0, cut);
       buffer = buffer.slice(cut + 2);
       cut = buffer.indexOf("\n\n");
-      const data = frame
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trim())
-        .join("");
-      if (!data) continue;
-      const parsed = matchupEventSchema.safeParse(JSON.parse(data));
-      if (parsed.success) onEvent(parsed.data);
+      dispatch(frame);
     }
   }
+  if (buffer.trim()) dispatch(buffer);
 }
 
 /** The last saved run for a company, or null when there is none. */

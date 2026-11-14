@@ -3,7 +3,14 @@ import type { MatchupEvent, MatchupReplay, SavedProfile } from "@repo/shared";
 import { jsonSchema, simulateReadableStream, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { createLedger, ground, harvest } from "./matchup.graph";
-import { brief, createMatchupService, type RunStore, wants } from "./matchup.service";
+import { createMatchupRoutes } from "./matchup.routes";
+import {
+  brief,
+  createMatchupService,
+  type MatchupService,
+  type RunStore,
+  wants,
+} from "./matchup.service";
 
 const COMPANY = "6ebd9536-fcc5-5921-8938-ce3497eb6262";
 const ROUND = "81a35997-c8e2-59de-8a9f-021d97e4f6a9";
@@ -98,8 +105,10 @@ describe("harvest", () => {
     expect(found.cites.map((c) => c.url)).toContain(PRESS);
   });
 
-  test("ignores prose results", () => {
-    expect(harvest({ content: [{ type: "text", text: "no json here" }] }).entities).toEqual([]);
+  test("ignores prose results and malformed content entries", () => {
+    expect(
+      harvest({ content: [{ type: "text", text: "no json here" }, null, 42] }).entities,
+    ).toEqual([]);
   });
 });
 
@@ -309,6 +318,142 @@ describe("matchup service", () => {
       (e) => events.push(e),
     );
     expect(events.at(-1)).toEqual({ type: "error", message: "No saved profile with this id" });
+  });
+
+  test("turns profile lookup rejections into an error event instead of throwing", async () => {
+    const service = createMatchupService({
+      model: new MockLanguageModelV4(),
+      modelId: "mock",
+      tools: async () => ({}),
+      profiles: {
+        get: async () => {
+          throw new Error("DB connection lost");
+        },
+        addRun: async () => "x",
+      },
+    });
+    const events: MatchupEvent[] = [];
+    await service.run(
+      { companyId: COMPANY, name: "x", profileId: "7e57a3c1-0000-4000-8000-000000000000" },
+      (e) => events.push(e),
+    );
+    expect(events.map((e) => e.type)).toEqual(["start", "error"]);
+    expect(events.at(-1)).toEqual({ type: "error", message: "DB connection lost" });
+  });
+
+  test("surfaces Cala tool error text while continuing the run", async () => {
+    let turn = 0;
+    const model = new MockLanguageModelV4({
+      doStream: async () =>
+        turn++ === 0
+          ? {
+              stream: simulateReadableStream({
+                chunks: [
+                  {
+                    type: "tool-call" as const,
+                    toolCallId: "t1",
+                    toolName: "entity_retrieval",
+                    input: JSON.stringify({ entity_id: ROUND }),
+                  },
+                  finish("tool-calls"),
+                ],
+              }),
+            }
+          : {
+              stream: simulateReadableStream({
+                chunks: [
+                  {
+                    type: "tool-call" as const,
+                    toolCallId: "t2",
+                    toolName: "submit_answer",
+                    input: JSON.stringify({
+                      summary: "Recovered.",
+                      investors: [],
+                      connections: [],
+                    }),
+                  },
+                  finish("tool-calls"),
+                ],
+              }),
+            },
+    });
+    const failingTool = tool({
+      inputSchema: jsonSchema<{ entity_id: string }>({ type: "object" }),
+      execute: async () => ({
+        isError: true,
+        content: [{ type: "text", text: "Entity 47078251 not found" }],
+      }),
+    });
+    const service = createMatchupService({
+      model,
+      modelId: "mock",
+      tools: async () => ({ entity_retrieval: failingTool }),
+      maxSteps: 2,
+    });
+    const events: MatchupEvent[] = [];
+    await service.run({ companyId: COMPANY, name: "In Parallel" }, (e) => events.push(e));
+    const toolResult = events.find((e) => e.type === "tool-result");
+    expect(toolResult).toMatchObject({
+      type: "tool-result",
+      ok: false,
+      summary: "Entity 47078251 not found",
+    });
+    expect(events.at(-1)?.type).toBe("done");
+  });
+});
+
+describe("matchup routes", () => {
+  test("survives client abort and emits error events if service.run rejects", async () => {
+    let aborted = false;
+    const fakeService: MatchupService = {
+      modelId: "mock",
+      last: async () => null,
+      run: async (_req, send, signal) => {
+        signal?.addEventListener("abort", () => {
+          aborted = true;
+        });
+        send({ type: "start", sessionId: "s1", model: "mock", traceUrl: null });
+        await Bun.sleep(40);
+        // Late event after cancel must not crash the controller.
+        send({ type: "step", step: 1 });
+      },
+    };
+    const server = Bun.serve({ port: 0, routes: createMatchupRoutes(fakeService) });
+    try {
+      const res = await fetch(new URL("/api/matchup", server.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: COMPANY, name: "In Parallel" }),
+      });
+      const reader = res.body?.getReader();
+      await reader?.read();
+      await reader?.cancel();
+      await Bun.sleep(60);
+      expect(aborted).toBe(true);
+    } finally {
+      server.stop();
+    }
+
+    const failingService: MatchupService = {
+      modelId: "mock",
+      last: async () => null,
+      run: async () => {
+        throw new Error("Unexpected crash");
+      },
+    };
+    const server2 = Bun.serve({ port: 0, routes: createMatchupRoutes(failingService) });
+    try {
+      const res = await fetch(new URL("/api/matchup", server2.url), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ companyId: COMPANY, name: "In Parallel" }),
+      });
+      const text = await res.text();
+      expect(text).toContain('"type":"error"');
+      expect(text).toContain("Unexpected crash");
+    } finally {
+      server2.stop();
+    }
   });
 });
 

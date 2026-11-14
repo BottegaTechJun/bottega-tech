@@ -7,23 +7,52 @@ const CALA_MCP_URL = "https://api.cala.ai/mcp/";
 export function createCalaTools(apiKey: string) {
   let client: Promise<MCPClient> | undefined;
 
-  async function tools(): Promise<ToolSet> {
-    client ??= createMCPClient({
+  function connect(): Promise<MCPClient> {
+    const pending = createMCPClient({
       name: "bottega-matchup",
-      transport: { type: "http", url: CALA_MCP_URL, headers: { "X-API-KEY": apiKey } },
+      transport: {
+        type: "http",
+        url: CALA_MCP_URL,
+        headers: { "X-API-KEY": apiKey },
+        onSessionExpired: () => {
+          if (client === pending) client = undefined;
+        },
+      },
+      onUncaughtError: (err) => {
+        console.error("Cala MCP client error:", err);
+      },
       maxRetries: 2,
     });
+    pending.catch(() => {
+      if (client === pending) client = undefined;
+    });
+    return pending;
+  }
+
+  async function load(): Promise<ToolSet> {
+    if (!client) client = connect();
+    const current = client;
     try {
-      const { knowledge_search: _slow, ...rest } = await (await client).tools();
+      const { knowledge_search: _slow, ...rest } = await (await current).tools();
       return rest;
     } catch (err) {
-      client = undefined;
+      if (client === current) client = undefined;
       throw err;
     }
   }
 
+  async function tools(): Promise<ToolSet> {
+    try {
+      return await load();
+    } catch {
+      return await load();
+    }
+  }
+
   async function close() {
-    await (await client)?.close();
+    const prev = client;
+    client = undefined;
+    await (await prev)?.close().catch(() => undefined);
   }
 
   return { tools, close };
