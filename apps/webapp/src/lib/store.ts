@@ -1,6 +1,11 @@
 "use client";
 
-import { type CompanyMatch, companyMatchSchema } from "@repo/shared";
+import {
+  type CompanyMatch,
+  companyMatchSchema,
+  type ManualCompany,
+  manualCompanySchema,
+} from "@repo/shared";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
 import { api } from "./api";
@@ -9,6 +14,10 @@ import { emptyPrefs, type Prefs } from "./prefs";
 /** Everything the founder has told us so far. Kept in localStorage, no account needed. */
 export interface Progress {
   company: CompanyMatch | null;
+  /** Founder-provided profile when Cala has no matching entity. */
+  manualCompany: ManualCompany | null;
+  /** The company query in progress, including before a company is selected. */
+  draftCompanyName: string | null;
   confirmed: boolean;
   prefs: Prefs;
   prefsDone: boolean;
@@ -18,6 +27,8 @@ const KEY = "bottega.onboarding.v1";
 
 export const fresh: Progress = {
   company: null,
+  manualCompany: null,
+  draftCompanyName: null,
   confirmed: false,
   prefs: emptyPrefs,
   prefsDone: false,
@@ -27,6 +38,8 @@ export const fresh: Progress = {
 const list = z.array(z.string()).catch([]);
 const progressSchema = z.object({
   company: companyMatchSchema.nullable().catch(null),
+  manualCompany: manualCompanySchema.nullable().catch(null),
+  draftCompanyName: z.string().nullable().catch(null),
   confirmed: z.boolean().catch(false),
   prefs: z
     .object({ round: list, size: list, geo: list, lead: list, sector: list, timing: list })

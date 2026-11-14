@@ -27,7 +27,7 @@ export function StepCards({ state, next, open }: Props) {
     {
       id: "find",
       title: state.company ? state.company.name : "Find your company",
-      sub: state.company ? (state.company.hq ?? "Company picked") : "Search Cala's graph",
+      sub: state.company ? (state.company.hq ?? "Company picked") : "Search public company data",
       span: "md:col-span-2",
       art: <FindArt state={state} />,
     },

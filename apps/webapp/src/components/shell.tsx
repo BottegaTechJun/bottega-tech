@@ -11,7 +11,7 @@ interface Props {
   children: React.ReactNode;
 }
 
-/** Cala-console style frame: dark sidebar on the left, rounded inset panel for content. */
+/** Dark console-style frame with a rounded inset panel for content. */
 export function Shell({ active, company, aside, children }: Props) {
   const items = [
     { id: "start", href: "/", label: "Home", icon: Rocket },
@@ -56,7 +56,7 @@ export function Shell({ active, company, aside, children }: Props) {
             className="flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm text-faint transition hover:text-dim"
           >
             <BookOpen className="size-4" strokeWidth={1.75} />
-            Data by Cala
+            Source data
           </a>
         </div>
       </aside>

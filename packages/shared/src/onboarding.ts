@@ -46,6 +46,20 @@ export const companyMatchSchema = z.object({
 });
 export type CompanyMatch = z.infer<typeof companyMatchSchema>;
 
+/** Founder-provided context used when Cala has no matching company record. */
+export const manualCompanySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  website: z.string().trim().max(200).nullable(),
+  hq: z.string().trim().max(120).nullable(),
+  industry: z.string().trim().max(120).nullable(),
+  stage: z.string().trim().max(80).nullable(),
+  targetRound: z.string().trim().max(80).nullable(),
+  targetAmount: z.string().trim().max(80).nullable(),
+  /** Cala companies selected by the founder as relevant analogues. */
+  similarCompanies: z.array(companyMatchSchema).max(5),
+});
+export type ManualCompany = z.infer<typeof manualCompanySchema>;
+
 export const companyMatchesSchema = z.object({
   companies: z.array(companyMatchSchema),
 });

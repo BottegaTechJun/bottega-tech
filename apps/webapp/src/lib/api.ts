@@ -39,7 +39,8 @@ async function request<Schema extends z.ZodType>(
     });
   } catch (err) {
     if (signal?.aborted) throw err;
-    if (timeout.aborted) throw new ApiError("timeout", "Cala is taking too long. Try again.");
+    if (timeout.aborted)
+      throw new ApiError("timeout", "Public company data is taking too long. Try again.");
     throw new ApiError("network_error", "Could not reach the Bottega API");
   }
 
@@ -47,7 +48,7 @@ async function request<Schema extends z.ZodType>(
   if (!res.ok) {
     const parsed = apiErrorSchema.safeParse(body);
     throw parsed.success
-      ? new ApiError(parsed.data.error.code, parsed.data.error.message)
+      ? new ApiError(parsed.data.error.code, publicMessage(parsed.data.error.message))
       : new ApiError("unknown_error", `Request failed (${res.status})`);
   }
 
@@ -56,6 +57,10 @@ async function request<Schema extends z.ZodType>(
     throw new ApiError("invalid_response", "The API returned an unexpected response");
   }
   return parsed.data;
+}
+
+function publicMessage(message: string): string {
+  return message.replace(/\bCala\b/gi, "public data service");
 }
 
 const profiles = new Map<string, Promise<Profile>>();

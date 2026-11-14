@@ -44,7 +44,7 @@ export function DetailPanel({ run, selection, select }: Props) {
       <div className="animate-rise">
         <Head title={`${name(fact.from)} and ${name(fact.to)}`} sub="Seen while exploring" />
         <p className="mt-3 text-sm leading-relaxed text-dim">
-          A Cala relation the agent saw. It is not part of the answer.
+          A relationship the research found. It is not part of the answer.
         </p>
         <Trace>
           <Group title="Relation" count={null} open>
@@ -92,7 +92,7 @@ export function DetailPanel({ run, selection, select }: Props) {
             </Group>
           )}
           {facts.length > 0 && (
-            <Group title="From Cala" count={facts.length} open={links.length === 0}>
+            <Group title="From source data" count={facts.length} open={links.length === 0}>
               {facts.slice(0, 40).map((f) => (
                 <FactLine key={factKey(f)} fact={f} name={name} />
               ))}
@@ -223,13 +223,13 @@ function ConnectionView(props: {
               ))
             ) : (
               <TraceLine>
-                <TraceTitle>Backed by the Cala relations below</TraceTitle>
+                <TraceTitle>Backed by the sourced relationships below</TraceTitle>
               </TraceLine>
             )}
           </Group>
 
           {link.facts.length > 0 && (
-            <Group title="From Cala" count={link.facts.length}>
+            <Group title="From source data" count={link.facts.length}>
               {link.facts.map((f) => (
                 <FactLine key={factKey(f)} fact={f} name={name} />
               ))}
