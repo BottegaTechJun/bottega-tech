@@ -1,8 +1,11 @@
-import { BookOpen, Compass, Network, Rocket } from "lucide-react";
+import { BookOpen, Network, Rocket } from "lucide-react";
 import Link from "next/link";
+import { Profiles } from "./profiles";
 
 interface Props {
   active: "start" | "paths";
+  /** Saved profile open on this page, highlighted in the sidebar */
+  profile?: string | null;
   /** Shown at the bottom of the sidebar once a company is picked */
   company?: React.ReactNode;
   /** Panel beside the main panel, on the page background (e.g. the agent trace) */
@@ -11,7 +14,7 @@ interface Props {
 }
 
 /** Cala-console style frame: dark sidebar on the left, rounded inset panel for content. */
-export function Shell({ active, company, aside, children }: Props) {
+export function Shell({ active, profile, company, aside, children }: Props) {
   const items = [
     { id: "start", href: "/", label: "Home", icon: Rocket },
     { id: "paths", href: "/warm-paths", label: "Warm paths", icon: Network },
@@ -39,13 +42,11 @@ export function Shell({ active, company, aside, children }: Props) {
               {label}
             </Link>
           ))}
-          <span className="flex h-9 items-center gap-2.5 px-2.5 text-sm text-faint">
-            <Compass className="size-4" strokeWidth={1.75} />
-            Explore
-          </span>
         </nav>
 
-        <div className="mt-auto flex flex-col gap-3">
+        <Profiles active={profile} />
+
+        <div className="mt-auto flex flex-col gap-3 pt-4">
           {company}
           <a
             href="https://cala.ai"

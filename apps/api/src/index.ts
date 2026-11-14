@@ -12,6 +12,8 @@ import { createFileRunStore } from "./modules/matchup/matchup.store";
 import demo from "./modules/onboarding/fixtures/demo.json";
 import { createOnboardingRoutes } from "./modules/onboarding/onboarding.routes";
 import { createOnboardingService } from "./modules/onboarding/onboarding.service";
+import { createProfileRoutes } from "./modules/profiles/profiles.routes";
+import { createProfileService } from "./modules/profiles/profiles.service";
 
 /** Shared Cala client (timeout, 429 retry, Valkey cache). Pass it into each feature's service. */
 const cala = createCalaClient({
@@ -20,6 +22,9 @@ const cala = createCalaClient({
 });
 
 const onboarding = createOnboardingService(cala, { snapshot: demo });
+
+// Saved profiles and their runs (apps/api/data/profiles, gitignored).
+const profiles = createProfileService({ dir: `${import.meta.dir}/../data/profiles` });
 
 // Langfuse first, so the agent's spans have somewhere to go.
 const telemetry = startTelemetry({
@@ -39,6 +44,7 @@ const matchup = env.GEMINI_API_KEY
       after: telemetry.flush,
       // Last run per company, replayed by the board (apps/api/.runs, gitignored).
       store: createFileRunStore(`${import.meta.dir}/../.runs`),
+      profiles,
     })
   : null;
 
@@ -54,6 +60,7 @@ const server = Bun.serve({
       ...healthRoutes,
       ...createOnboardingRoutes(onboarding),
       ...createMatchupRoutes(matchup),
+      ...createProfileRoutes(profiles),
     },
     middleware,
   ),

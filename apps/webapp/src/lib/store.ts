@@ -11,6 +11,8 @@ export interface Progress {
   confirmed: boolean;
   prefs: Prefs;
   prefsDone: boolean;
+  /** Saved profile these answers belong to, once onboarding is done */
+  profileId: string | null;
 }
 
 const KEY = "bottega.onboarding.v1";
@@ -20,6 +22,7 @@ export const fresh: Progress = {
   confirmed: false,
   prefs: emptyPrefs,
   prefsDone: false,
+  profileId: null,
 };
 
 // Bad or stale fields fall back to their defaults instead of crashing the page.
@@ -31,6 +34,7 @@ const progressSchema = z.object({
     .object({ round: list, size: list, geo: list, lead: list, sector: list, timing: list })
     .catch(emptyPrefs),
   prefsDone: z.boolean().catch(false),
+  profileId: z.string().nullable().catch(null),
 });
 
 function read(): Progress {

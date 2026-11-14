@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { MatchupEvent, MatchupReplay } from "@repo/shared";
+import type { MatchupEvent, MatchupReplay, SavedProfile } from "@repo/shared";
 import { jsonSchema, simulateReadableStream, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { createLedger, ground, harvest } from "./matchup.graph";
-import { createMatchupService, type RunStore } from "./matchup.service";
+import { brief, createMatchupService, type RunStore, wants } from "./matchup.service";
 
 const COMPANY = "6ebd9536-fcc5-5921-8938-ce3497eb6262";
 const ROUND = "81a35997-c8e2-59de-8a9f-021d97e4f6a9";
@@ -243,5 +243,87 @@ describe("matchup service", () => {
     await service.run({ companyId: COMPANY, name: "x" }, (e) => events.push(e));
     expect(events.map((e) => e.type)).toEqual(["start", "error"]);
     expect(events[0]?.type === "start" && events[0].sessionId.startsWith("warmup-")).toBe(true);
+  });
+
+  test("runs for a saved profile and keeps every run under it", async () => {
+    const profile: SavedProfile = {
+      id: "7e57a3c1-0000-4000-8000-000000000000",
+      company: { id: COMPANY, name: "In Parallel", description: null, hq: null, website: null },
+      facts: null,
+      prefs: { round: ["A"], size: [], geo: ["Nordics"], lead: [], sector: [], timing: [] },
+      createdAt: "x",
+      updatedAt: "x",
+    };
+    const added: [string, string, MatchupReplay][] = [];
+    const legacy = new Map<string, MatchupReplay>();
+    const model = new MockLanguageModelV4({
+      doStream: async () => ({
+        stream: simulateReadableStream({
+          chunks: [
+            {
+              type: "tool-call" as const,
+              toolCallId: "t1",
+              toolName: "submit_answer",
+              input: JSON.stringify({ summary: "None", investors: [], connections: [] }),
+            },
+            finish("tool-calls"),
+          ],
+        }),
+      }),
+    });
+    const service = createMatchupService({
+      model,
+      modelId: "mock",
+      tools: async () => ({}),
+      store: memoryStore(legacy),
+      profiles: {
+        get: async (id) => (id === profile.id ? profile : null),
+        addRun: async (id, name, run) => {
+          added.push([id, name, run]);
+          return name;
+        },
+      },
+    });
+    await service.run(
+      { companyId: COMPANY, name: "In Parallel", sessionId: "warmup-2", profileId: profile.id },
+      () => {},
+    );
+
+    expect(added.map(([id, name, run]) => [id, name, run.complete])).toEqual([
+      [profile.id, "warmup-2", true],
+    ]);
+    expect(legacy.size).toBe(0);
+    expect(JSON.stringify(model.doStreamCalls[0]?.prompt)).toContain("raising Series A");
+  });
+
+  test("reports an unknown profile as an error event", async () => {
+    const service = createMatchupService({
+      model: new MockLanguageModelV4(),
+      modelId: "mock",
+      tools: async () => ({}),
+      profiles: { get: async () => null, addRun: async () => "x" },
+    });
+    const events: MatchupEvent[] = [];
+    await service.run(
+      { companyId: COMPANY, name: "x", profileId: "7e57a3c1-0000-4000-8000-000000000000" },
+      (e) => events.push(e),
+    );
+    expect(events.at(-1)).toEqual({ type: "error", message: "No saved profile with this id" });
+  });
+});
+
+describe("brief", () => {
+  test("states what the company wants next", () => {
+    expect(
+      wants({
+        round: ["B"],
+        size: ["€15-30M"],
+        geo: [],
+        lead: ["lead"],
+        sector: [],
+        timing: ["now"],
+      }),
+    ).toBe("What it wants next: raising Series B; size €15-30M; looking for a lead; starting now.");
+    expect(brief({ companyId: COMPANY, name: "In Parallel" }, null)).not.toContain("wants");
   });
 });

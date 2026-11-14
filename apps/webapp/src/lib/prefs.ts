@@ -1,4 +1,8 @@
+import type { Prefs } from "@repo/shared";
+
 /** Investor preference questions. Each one is a single short step in the flow. */
+
+export type { Prefs };
 
 export interface Option {
   id: string;
@@ -13,15 +17,6 @@ export interface Question {
   /** Shown as large cards instead of chips */
   cards?: boolean;
   options: (prefs: Prefs) => Option[];
-}
-
-export interface Prefs {
-  round: string[];
-  size: string[];
-  geo: string[];
-  lead: string[];
-  sector: string[];
-  timing: string[];
 }
 
 export const emptyPrefs: Prefs = { round: [], size: [], geo: [], lead: [], sector: [], timing: [] };
@@ -103,6 +98,12 @@ export function answer(prefs: Prefs, id: keyof Prefs): string {
   const question = questions.find((q) => q.id === id);
   const options = question?.options(prefs) ?? [];
   return prefs[id].map((value) => options.find((o) => o.id === value)?.label ?? value).join(", ");
+}
+
+/** Short line for the sidebar, e.g. "Series A · €5-10M · Nordics". */
+export function summary(prefs: Prefs): string {
+  const parts = (["round", "size", "geo", "lead"] as const).map((id) => answer(prefs, id));
+  return parts.filter(Boolean).join(" · ") || "No preferences yet";
 }
 
 /** Sensible defaults from the company's facts: next round and sector. */

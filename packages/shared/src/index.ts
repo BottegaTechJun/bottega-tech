@@ -23,3 +23,4 @@ export type ApiErrorBody = z.infer<typeof apiErrorSchema>;
 
 export * from "./matchup";
 export * from "./onboarding";
+export * from "./profiles";
