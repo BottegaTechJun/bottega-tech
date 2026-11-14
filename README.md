@@ -16,16 +16,16 @@ Requires [Bun](https://bun.sh) 1.3+.
 ```sh
 bun install
 cp apps/api/.env.example apps/api/.env   # then set CALA_API_KEY
+cp apps/webapp/.env.example apps/webapp/.env.local
 ```
 
-The API refuses to start without `CALA_API_KEY`. The key stays on the backend; the frontend
-only needs `NEXT_PUBLIC_API_URL`, which defaults to `http://localhost:4000`
-(override in `apps/web/.env.local`).
+The API refuses to start without `CALA_API_KEY`. The key stays on the backend. Set the same
+`INTERNAL_API_SECRET` in both apps; private investor searches require signing in with NextAuth.
 
 ## Run
 
 ```sh
-bun dev              # web on http://localhost:3000, api on http://localhost:4000
+bun dev              # webapp on http://localhost:3001, api on http://localhost:4000
 ```
 
 ```sh

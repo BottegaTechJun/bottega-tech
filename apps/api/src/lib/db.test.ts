@@ -1,8 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { MatchupReplay, Profile } from "@repo/shared";
+import type { Profile } from "@repo/shared";
 import { createCalaClient } from "../modules/cala/cala.client";
-import { createDatabaseRunStore } from "../modules/matchup/matchup.store";
 import { createOnboardingService } from "../modules/onboarding/onboarding.service";
+import { createSearchSessionStore } from "../modules/searches/searches.service";
 import { createDatabase, type Database, SCHEMA_SQL } from "./db";
 
 const COMPANY_ID = "6ebd9536-fcc5-5921-8938-ce3497eb6262";
@@ -16,51 +16,14 @@ const sampleProfile: Profile = {
   founded: { value: "2023-10-10", sources: [] },
   stage: { value: "SEED", sources: [] },
   industries: [{ value: "SOFTWARE", sources: [] }],
-  rounds: [
-    {
-      id: "81a35997-c8e2-59de-8a9f-021d97e4f6a9",
-      label: "SEED",
-      date: "2024-11-12",
-      amount: null,
-      currency: "EUR",
-      backers: [{ id: "lv1", name: "Lifeline Ventures", lead: true }],
-      sources: [],
-    },
-  ],
-  investors: [
-    {
-      id: "lv1",
-      ids: ["lv1"],
-      name: "Lifeline Ventures",
-      website: "lifelineventures.com",
-      led: ["SEED"],
-      sources: [],
-    },
-  ],
-  people: [{ id: "p1", name: "Markku", roles: ["CEO", "FOUNDER"], sources: [] }],
+  rounds: [],
+  investors: [],
+  people: [],
   slush: { listed: true, sources: [] },
 };
 
 function createFakeDb(): Database {
   const profiles = new Map<string, { profile: Profile; updatedAt: Date }>();
-  const prefs = new Map<
-    string,
-    {
-      companyId: string;
-      confirmed: boolean;
-      prefsDone: boolean;
-      prefs: {
-        round: string[];
-        size: string[];
-        geo: string[];
-        lead: string[];
-        sector: string[];
-        timing: string[];
-      };
-      updatedAt: string;
-    }
-  >();
-  const runs = new Map<string, MatchupReplay>();
 
   return {
     migrate: mock(async () => undefined),
@@ -68,18 +31,6 @@ function createFakeDb(): Database {
       profiles.set(profile.id, { profile, updatedAt: new Date() });
     }),
     loadProfile: mock(async (id: string) => profiles.get(id) ?? null),
-    loadPreferences: mock(async (id: string) => prefs.get(id) ?? null),
-    savePreferences: mock(async (id, input) => {
-      const state = {
-        companyId: id,
-        confirmed: input.confirmed,
-        prefsDone: input.prefsDone,
-        prefs: input.prefs,
-        updatedAt: new Date().toISOString(),
-      };
-      prefs.set(id, state);
-      return state;
-    }),
     saveUser: mock(async (input) => ({
       id: input.id,
       email: input.email,
@@ -88,13 +39,21 @@ function createFakeDb(): Database {
       companyId: input.companyId ?? null,
       updatedAt: new Date().toISOString(),
     })),
-    loadMatchupRun: mock(async (id: string) => runs.get(id) ?? null),
-    saveMatchupRun: mock(async (id: string, run: MatchupReplay) => {
-      runs.set(id, run);
-    }),
     close: mock(async () => undefined),
   };
 }
+
+const input = {
+  company: {
+    id: COMPANY_ID,
+    name: "In Parallel",
+    description: "AI management platform",
+    hq: "Tampere, Finland",
+    website: "in-parallel.com",
+  },
+  facts: sampleProfile,
+  prefs: { round: [], size: [], geo: [], lead: [], sector: [], timing: [] },
+};
 
 describe("database integration", () => {
   test("createDatabase returns null when DATABASE_URL is omitted", () => {
@@ -102,59 +61,45 @@ describe("database integration", () => {
     expect(createDatabase("")).toBeNull();
   });
 
-  test("SCHEMA_SQL defines all required domain tables", () => {
+  test("SCHEMA_SQL contains public data, users, and owned search sessions", () => {
     expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS companies");
     expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS funding_rounds");
     expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS investors");
     expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS company_investors");
     expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS company_people");
-    expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS founder_preferences");
-    expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS matchup_runs");
-    expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS matchup_run_history");
+    expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS users");
+    expect(SCHEMA_SQL).toContain("CREATE TABLE IF NOT EXISTS investor_search_sessions");
+    expect(SCHEMA_SQL).toContain("user_id TEXT NOT NULL REFERENCES users(id)");
+    expect(SCHEMA_SQL).not.toContain("CREATE TABLE IF NOT EXISTS matchup_runs");
+    expect(SCHEMA_SQL).not.toContain("CREATE TABLE IF NOT EXISTS founder_preferences");
   });
 
-  test("onboarding service reads cached profiles and saves preferences via Database", async () => {
+  test("onboarding service reads cached public profiles without private preferences", async () => {
     const db = createFakeDb();
     await db.saveProfile(sampleProfile);
 
     const fetch = mock(async () => new Response("{}"));
     const service = createOnboardingService(createCalaClient({ apiKey: "k", fetch }), { db });
 
-    // Reads from db without calling Cala upstream
     const loaded = await service.getProfile(COMPANY_ID);
     expect(loaded.name).toBe("In Parallel");
     expect(fetch).not.toHaveBeenCalled();
-
-    // Saves and retrieves founder preferences
-    const saved = await service.savePreferences(COMPANY_ID, {
-      confirmed: true,
-      prefsDone: true,
-      prefs: {
-        round: ["A"],
-        size: ["€5-10M"],
-        geo: ["Nordics", "Europe"],
-        lead: ["lead"],
-        sector: ["Software", "AI"],
-        timing: ["3m"],
-      },
-    });
-    expect(saved.confirmed).toBe(true);
-    expect(saved.prefs.round).toEqual(["A"]);
-
-    const fetchedPrefs = await service.getPreferences(COMPANY_ID);
-    expect(fetchedPrefs.prefs.geo).toEqual(["Nordics", "Europe"]);
   });
 
-  test("createDatabaseRunStore persists and loads matchup replays with fallback", async () => {
-    const db = createFakeDb();
-    const store = createDatabaseRunStore(db);
-    const replay: MatchupReplay = {
+  test("search sessions are isolated by user", async () => {
+    const store = createSearchSessionStore(null);
+    const replay = {
       complete: true,
       savedAt: "2026-11-14T16:00:00.000Z",
-      events: [{ type: "step", step: 1 }],
+      events: [{ type: "step", step: 1 } as const],
     };
 
-    await store.save(COMPANY_ID, replay);
-    expect(await store.load(COMPANY_ID)).toEqual(replay);
+    await store.save("alice", "run-a", input, replay, null);
+    await store.save("bob", "run-b", input, replay, null);
+
+    expect((await store.list("alice")).map((session) => session.id)).toEqual(["run-a"]);
+    expect((await store.list("bob")).map((session) => session.id)).toEqual(["run-b"]);
+    expect(await store.load("bob", "run-a")).toBeNull();
+    expect(await store.remove("bob", "run-a")).toBe(false);
   });
 });

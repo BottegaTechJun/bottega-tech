@@ -297,3 +297,77 @@ export function ground(
     dropped,
   };
 }
+
+/**
+ * Keeps the useful part of a run when the agent stops before submitting its answer.
+ * These are candidates backed by sourced Cala facts, not a finalized recommendation.
+ */
+export function partialGraph(
+  ledger: Ledger,
+  meta: { sessionId: string; companyId: string; companyName: string },
+): MatchupGraph {
+  const facts = [...ledger.facts.values()];
+  const candidates = new Map<string, { facts: number; evidence: Cite[] }>();
+
+  for (const fact of facts) {
+    const investing = fact.role?.toUpperCase() === "INVESTOR" || fact.relation === "INVESTED_IN";
+    if (!investing || fact.from === meta.companyId || !ledger.entities.has(fact.from)) continue;
+    const existing = candidates.get(fact.from) ?? { facts: 0, evidence: [] };
+    existing.facts += 1;
+    const urls = new Set(existing.evidence.map((cite) => cite.url ?? cite.name));
+    for (const cite of fact.sources) {
+      const key = cite.url ?? cite.name;
+      if (!urls.has(key)) {
+        existing.evidence.push(cite);
+        urls.add(key);
+      }
+    }
+    candidates.set(fact.from, existing);
+  }
+
+  const investors = [...candidates.entries()]
+    .map(([id, candidate]) => ({
+      id,
+      candidate,
+      entity: ledger.entities.get(id),
+    }))
+    .filter((item): item is typeof item & { entity: Entity } =>
+      Boolean(item.entity && item.candidate.evidence.length),
+    )
+    .sort((a, b) => b.candidate.facts - a.candidate.facts)
+    .slice(0, 5)
+    .map(({ id, candidate }) => ({
+      id,
+      why: "Found in sourced funding records explored before the search stopped.",
+      evidence: candidate.evidence.slice(0, 4),
+    }));
+
+  const company =
+    ledger.entities.get(meta.companyId) ??
+    ({
+      id: meta.companyId,
+      name: meta.companyName,
+      type: "Company",
+      role: "company",
+    } satisfies Entity);
+  const entityIds = new Set([meta.companyId, ...investors.map((investor) => investor.id)]);
+  const entities = [
+    company,
+    ...investors.flatMap((investor) => {
+      const entity = ledger.entities.get(investor.id);
+      return entity ? [{ ...entity, role: "investor" as const }] : [];
+    }),
+  ];
+
+  return {
+    sessionId: meta.sessionId,
+    companyId: meta.companyId,
+    summary: investors.length
+      ? "This search stopped before the full match was finalized. These candidates were found in the sourced records explored so far."
+      : "This search stopped before the agent found a sourced investor match. Run it again to continue the search.",
+    entities: entities.filter((entity) => entityIds.has(entity.id)),
+    investors,
+    connections: [],
+    dropped: 0,
+  };
+}

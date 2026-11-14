@@ -14,6 +14,7 @@ const envSchema = z.object({
     .min(1, "CALA_API_KEY is required (set it in apps/api/.env)"),
   VALKEY_URL: optional,
   DATABASE_URL: optional,
+  INTERNAL_API_SECRET: optional,
   PORT: z.coerce.number().int().positive().default(4000),
   CORS_ORIGIN: z.string().min(1).default("http://localhost:3000"),
   // Matchup agent: off when the key is missing.

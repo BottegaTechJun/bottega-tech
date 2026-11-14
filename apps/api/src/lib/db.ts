@@ -1,12 +1,13 @@
 import {
-  type FounderPreferencesState,
-  founderPreferencesStateSchema,
-  founderPrefsSchema,
   type MatchupReplay,
   matchupReplaySchema,
   type Profile,
   profileSchema,
-  type UpsertFounderPreferences,
+  type SearchSession,
+  type SearchSessionInput,
+  type SearchSessionStatus,
+  type SearchSessionSummary,
+  searchSessionSchema,
   type UpsertUser,
   type User,
 } from "@repo/shared";
@@ -20,8 +21,8 @@ import { z } from "zod";
  * - normalized funding rounds (`funding_rounds`)
  * - normalized investors & company-investor links (`investors`, `company_investors`)
  * - company leadership (`company_people`)
- * - founder onboarding preferences (`founder_preferences`)
- * - investor matchup agent runs & history (`matchup_runs`, `matchup_run_history`)
+ * - authenticated users (`users`)
+ * - user-owned investor searches (`investor_search_sessions`)
  */
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS companies (
@@ -87,44 +88,6 @@ CREATE TABLE IF NOT EXISTS company_people (
   PRIMARY KEY (company_id, person_id)
 );
 
-CREATE TABLE IF NOT EXISTS founder_preferences (
-  company_id UUID PRIMARY KEY,
-  confirmed BOOLEAN NOT NULL DEFAULT FALSE,
-  prefs_done BOOLEAN NOT NULL DEFAULT FALSE,
-  round JSONB NOT NULL DEFAULT '[]'::jsonb,
-  size JSONB NOT NULL DEFAULT '[]'::jsonb,
-  geo JSONB NOT NULL DEFAULT '[]'::jsonb,
-  lead JSONB NOT NULL DEFAULT '[]'::jsonb,
-  sector JSONB NOT NULL DEFAULT '[]'::jsonb,
-  timing JSONB NOT NULL DEFAULT '[]'::jsonb,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS matchup_runs (
-  company_id UUID PRIMARY KEY,
-  session_id TEXT,
-  model TEXT,
-  complete BOOLEAN NOT NULL DEFAULT FALSE,
-  saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  graph JSONB,
-  events JSONB NOT NULL DEFAULT '[]'::jsonb
-);
-
-CREATE TABLE IF NOT EXISTS matchup_run_history (
-  session_id TEXT PRIMARY KEY,
-  company_id UUID NOT NULL,
-  model TEXT,
-  complete BOOLEAN NOT NULL DEFAULT FALSE,
-  summary TEXT,
-  dropped INTEGER NOT NULL DEFAULT 0,
-  graph JSONB,
-  events JSONB NOT NULL DEFAULT '[]'::jsonb,
-  saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_matchup_run_history_company_id
-  ON matchup_run_history (company_id, saved_at DESC);
-
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   email TEXT NOT NULL UNIQUE,
@@ -136,6 +99,20 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (LOWER(email));
+
+CREATE TABLE IF NOT EXISTS investor_search_sessions (
+  id TEXT NOT NULL,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  input JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'incomplete',
+  parent_id TEXT,
+  saved_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  replay JSONB NOT NULL DEFAULT '{"complete":false,"savedAt":"","events":[]}'::jsonb,
+  PRIMARY KEY (user_id, id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_investor_search_sessions_user_saved
+  ON investor_search_sessions (user_id, saved_at DESC);
 `;
 
 export interface Database {
@@ -145,19 +122,22 @@ export interface Database {
   saveProfile(profile: Profile): Promise<void>;
   /** Loads a cached company profile by UUID if present. */
   loadProfile(companyId: string): Promise<{ profile: Profile; updatedAt: Date } | null>;
-  /** Loads founder onboarding preferences for a company. */
-  loadPreferences(companyId: string): Promise<FounderPreferencesState | null>;
-  /** Upserts founder onboarding preferences for a company. */
-  savePreferences(
-    companyId: string,
-    input: UpsertFounderPreferences,
-  ): Promise<FounderPreferencesState>;
   /** Upserts an authenticated user (e.g. from Google OAuth). */
   saveUser(input: UpsertUser): Promise<User>;
-  /** Loads the latest saved matchup replay for a company. */
-  loadMatchupRun(companyId: string): Promise<MatchupReplay | null>;
-  /** Saves a matchup replay (latest per company + run history). */
-  saveMatchupRun(companyId: string, run: MatchupReplay): Promise<void>;
+  /** Saves one investor search under its authenticated owner. */
+  saveSearchSession?(
+    userId: string,
+    id: string,
+    input: SearchSessionInput,
+    replay: MatchupReplay,
+    parentId: string | null,
+  ): Promise<void>;
+  /** Lists only the authenticated user's investor searches. */
+  listSearchSessions?(userId: string): Promise<SearchSessionSummary[]>;
+  /** Loads one investor search only when it belongs to the authenticated user. */
+  loadSearchSession?(userId: string, id: string): Promise<SearchSession | null>;
+  /** Deletes one investor search only when it belongs to the authenticated user. */
+  deleteSearchSession?(userId: string, id: string): Promise<boolean>;
   /** Closes the underlying connection pool. */
   close(): Promise<void>;
 }
@@ -178,23 +158,13 @@ const companyProfileRowSchema = z.looseObject({
   updated_at: z.union([z.date(), z.string()]),
 });
 
-const preferencesRowSchema = z.looseObject({
-  company_id: z.string(),
-  confirmed: z.boolean(),
-  prefs_done: z.boolean(),
-  round: z.unknown(),
-  size: z.unknown(),
-  geo: z.unknown(),
-  lead: z.unknown(),
-  sector: z.unknown(),
-  timing: z.unknown(),
-  updated_at: z.union([z.date(), z.string()]).optional(),
-});
-
-const matchupRunRowSchema = z.looseObject({
-  complete: z.boolean(),
+const searchSessionRowSchema = z.looseObject({
+  id: z.string(),
+  input: z.unknown(),
+  status: z.enum(["running", "complete", "incomplete"]),
+  parent_id: z.string().nullable().optional(),
   saved_at: z.union([z.date(), z.string()]),
-  events: z.unknown(),
+  replay: z.unknown(),
 });
 
 function toIsoString(val: Date | string | undefined): string {
@@ -374,80 +344,6 @@ export function createSqlDatabase(sql: SQL): Database {
     return { profile: parsedProfile.data, updatedAt };
   }
 
-  async function loadPreferences(companyId: string): Promise<FounderPreferencesState | null> {
-    await migrate();
-    const rows: unknown[] = await sql`
-      SELECT company_id, confirmed, prefs_done, round, size, geo, lead, sector, timing, updated_at
-      FROM founder_preferences
-      WHERE company_id = ${companyId}::uuid
-      LIMIT 1
-    `;
-    const row = preferencesRowSchema.safeParse(rows[0]);
-    if (!row.success) return null;
-
-    const prefsParsed = founderPrefsSchema.safeParse({
-      round: parseJsonValue(row.data.round),
-      size: parseJsonValue(row.data.size),
-      geo: parseJsonValue(row.data.geo),
-      lead: parseJsonValue(row.data.lead),
-      sector: parseJsonValue(row.data.sector),
-      timing: parseJsonValue(row.data.timing),
-    });
-    if (!prefsParsed.success) return null;
-
-    const stateParsed = founderPreferencesStateSchema.safeParse({
-      companyId: row.data.company_id,
-      confirmed: row.data.confirmed,
-      prefsDone: row.data.prefs_done,
-      prefs: prefsParsed.data,
-      updatedAt: toIsoString(row.data.updated_at),
-    });
-    return stateParsed.success ? stateParsed.data : null;
-  }
-
-  async function savePreferences(
-    companyId: string,
-    input: UpsertFounderPreferences,
-  ): Promise<FounderPreferencesState> {
-    await migrate();
-    const { confirmed, prefsDone, prefs } = input;
-    const rows: unknown[] = await sql`
-      INSERT INTO founder_preferences (
-        company_id, confirmed, prefs_done, round, size, geo, lead, sector, timing, updated_at
-      ) VALUES (
-        ${companyId}::uuid,
-        ${confirmed},
-        ${prefsDone},
-        ${JSON.stringify(prefs.round)}::jsonb,
-        ${JSON.stringify(prefs.size)}::jsonb,
-        ${JSON.stringify(prefs.geo)}::jsonb,
-        ${JSON.stringify(prefs.lead)}::jsonb,
-        ${JSON.stringify(prefs.sector)}::jsonb,
-        ${JSON.stringify(prefs.timing)}::jsonb,
-        NOW()
-      )
-      ON CONFLICT (company_id) DO UPDATE SET
-        confirmed = EXCLUDED.confirmed,
-        prefs_done = EXCLUDED.prefs_done,
-        round = EXCLUDED.round,
-        size = EXCLUDED.size,
-        geo = EXCLUDED.geo,
-        lead = EXCLUDED.lead,
-        sector = EXCLUDED.sector,
-        timing = EXCLUDED.timing,
-        updated_at = NOW()
-      RETURNING updated_at
-    `;
-    const first = z.looseObject({ updated_at: z.union([z.date(), z.string()]) }).safeParse(rows[0]);
-    return {
-      companyId,
-      confirmed,
-      prefsDone,
-      prefs,
-      updatedAt: first.success ? toIsoString(first.data.updated_at) : new Date().toISOString(),
-    };
-  }
-
   async function saveUser(input: UpsertUser): Promise<User> {
     await migrate();
     const name = input.name ?? null;
@@ -489,91 +385,110 @@ export function createSqlDatabase(sql: SQL): Database {
     };
   }
 
-  async function loadMatchupRun(companyId: string): Promise<MatchupReplay | null> {
+  async function saveSearchSession(
+    userId: string,
+    id: string,
+    input: SearchSessionInput,
+    replay: MatchupReplay,
+    parentId: string | null,
+  ): Promise<void> {
+    await migrate();
+    const status: SearchSessionStatus = replay.complete
+      ? "complete"
+      : replay.events.some((event) => event.type === "error")
+        ? "incomplete"
+        : "running";
+    await sql`
+      INSERT INTO investor_search_sessions (
+        id, user_id, input, status, parent_id, saved_at, replay
+      ) VALUES (
+        ${id},
+        ${userId},
+        ${JSON.stringify(input)}::jsonb,
+        ${status},
+        ${parentId},
+        ${replay.savedAt}::timestamptz,
+        ${JSON.stringify(replay)}::jsonb
+      )
+      ON CONFLICT (user_id, id) DO UPDATE SET
+        input = EXCLUDED.input,
+        status = EXCLUDED.status,
+        parent_id = EXCLUDED.parent_id,
+        saved_at = EXCLUDED.saved_at,
+        replay = EXCLUDED.replay
+    `;
+  }
+
+  async function listSearchSessions(userId: string): Promise<SearchSessionSummary[]> {
     await migrate();
     const rows: unknown[] = await sql`
-      SELECT complete, saved_at, events
-      FROM matchup_runs
-      WHERE company_id = ${companyId}::uuid
+      SELECT id, input, status, parent_id, saved_at, replay
+      FROM investor_search_sessions
+      WHERE user_id = ${userId}
+      ORDER BY saved_at DESC
+    `;
+    return rows.flatMap((raw) => {
+      const row = searchSessionRowSchema.safeParse(raw);
+      if (!row.success) return [];
+      const replay = matchupReplaySchema.safeParse(parseJsonValue(row.data.replay));
+      const input = searchSessionSchema.shape.input.safeParse(parseJsonValue(row.data.input));
+      if (!replay.success || !input.success) return [];
+      const done = replay.data.events.find((event) => event.type === "done");
+      const followUp = replay.data.events.find((event) => event.type === "follow-up");
+      return [
+        {
+          id: row.data.id,
+          input: input.data,
+          status: row.data.status,
+          savedAt: toIsoString(row.data.saved_at),
+          parentId: row.data.parent_id ?? null,
+          picks: done?.type === "done" ? done.graph.investors.length : 0,
+          question: followUp?.type === "follow-up" ? followUp.question : null,
+        },
+      ];
+    });
+  }
+
+  async function loadSearchSession(userId: string, id: string): Promise<SearchSession | null> {
+    await migrate();
+    const rows: unknown[] = await sql`
+      SELECT id, input, status, parent_id, saved_at, replay
+      FROM investor_search_sessions
+      WHERE id = ${id} AND user_id = ${userId}
       LIMIT 1
     `;
-    const row = matchupRunRowSchema.safeParse(rows[0]);
+    const row = searchSessionRowSchema.safeParse(rows[0]);
     if (!row.success) return null;
-
-    const parsed = matchupReplaySchema.safeParse({
-      complete: row.data.complete,
+    const parsed = searchSessionSchema.safeParse({
+      id: row.data.id,
+      input: parseJsonValue(row.data.input),
+      status: row.data.status,
       savedAt: toIsoString(row.data.saved_at),
-      events: parseJsonValue(row.data.events),
+      parentId: row.data.parent_id ?? null,
+      replay: parseJsonValue(row.data.replay),
     });
     return parsed.success ? parsed.data : null;
   }
 
-  async function saveMatchupRun(companyId: string, run: MatchupReplay): Promise<void> {
+  async function deleteSearchSession(userId: string, id: string): Promise<boolean> {
     await migrate();
-    const startEvent = run.events.find((e) => e.type === "start");
-    const doneEvent = run.events.find((e) => e.type === "done");
-    const sessionId = startEvent?.sessionId ?? doneEvent?.graph.sessionId ?? null;
-    const model = startEvent?.model ?? null;
-    const graph = doneEvent?.graph ?? null;
-    const eventsJson = JSON.stringify(run.events);
-    const graphJson = graph ? JSON.stringify(graph) : null;
-
-    await sql`
-      INSERT INTO matchup_runs (
-        company_id, session_id, model, complete, saved_at, graph, events
-      ) VALUES (
-        ${companyId}::uuid,
-        ${sessionId},
-        ${model},
-        ${run.complete},
-        ${run.savedAt}::timestamptz,
-        ${graphJson}::jsonb,
-        ${eventsJson}::jsonb
-      )
-      ON CONFLICT (company_id) DO UPDATE SET
-        session_id = EXCLUDED.session_id,
-        model = EXCLUDED.model,
-        complete = EXCLUDED.complete,
-        saved_at = EXCLUDED.saved_at,
-        graph = EXCLUDED.graph,
-        events = EXCLUDED.events
+    const rows: unknown[] = await sql`
+      DELETE FROM investor_search_sessions
+      WHERE id = ${id} AND user_id = ${userId}
+      RETURNING id
     `;
-
-    if (sessionId) {
-      await sql`
-        INSERT INTO matchup_run_history (
-          session_id, company_id, model, complete, summary, dropped, graph, events, saved_at
-        ) VALUES (
-          ${sessionId},
-          ${companyId}::uuid,
-          ${model},
-          ${run.complete},
-          ${graph?.summary ?? null},
-          ${graph?.dropped ?? 0},
-          ${graphJson}::jsonb,
-          ${eventsJson}::jsonb,
-          ${run.savedAt}::timestamptz
-        )
-        ON CONFLICT (session_id) DO UPDATE SET
-          complete = EXCLUDED.complete,
-          summary = EXCLUDED.summary,
-          dropped = EXCLUDED.dropped,
-          graph = EXCLUDED.graph,
-          events = EXCLUDED.events,
-          saved_at = EXCLUDED.saved_at
-      `;
-    }
+    return rows.length > 0;
   }
 
   return {
     migrate,
     saveProfile,
     loadProfile,
-    loadPreferences,
-    savePreferences,
     saveUser,
-    loadMatchupRun,
-    saveMatchupRun,
+    saveSearchSession,
+    listSearchSessions,
+    loadSearchSession,
+    deleteSearchSession,
     close: () => sql.close(),
   };
 }

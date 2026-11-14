@@ -7,10 +7,9 @@ import {
   type MatchupReplay,
   type MatchupRequest,
   matchupEventSchema,
-  matchupReplaySchema,
 } from "@repo/shared";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const PRIVATE_API_URL = "/api/backend";
 
 // ---------- Stream client ----------
 
@@ -20,7 +19,7 @@ export async function streamMatchup(
   onEvent: (event: MatchupEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(`${API_URL}/api/matchup`, {
+  const res = await fetch(`${PRIVATE_API_URL}/matchup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -53,16 +52,6 @@ export async function streamMatchup(
       if (parsed.success) onEvent(parsed.data);
     }
   }
-}
-
-/** The last saved run for a company, or null when there is none. */
-export async function lastMatchup(companyId: string): Promise<MatchupReplay | null> {
-  const res = await fetch(`${API_URL}/api/matchup/${encodeURIComponent(companyId)}/last`).catch(
-    () => null,
-  );
-  if (!res?.ok) return null;
-  const parsed = matchupReplaySchema.safeParse(await res.json().catch(() => null));
-  return parsed.success ? parsed.data : null;
 }
 
 // ---------- Run state ----------
@@ -233,7 +222,13 @@ export function reduce(run: Run, action: Action): Run {
     case "replay": {
       const begun: Run = { ...idle, status: "running", savedAt: action.saved.savedAt };
       const played = action.saved.events.reduce(apply, begun);
-      return played.status === "running" ? { ...played, status: "incomplete" } : played;
+      return played.status === "running"
+        ? {
+            ...played,
+            status: "incomplete",
+            error: "This search was interrupted before it finished.",
+          }
+        : played;
     }
     case "fail":
       if (run.status !== "running") return run;

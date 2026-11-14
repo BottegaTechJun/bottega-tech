@@ -3,14 +3,12 @@ import type {
   Cite,
   CompanyMatch,
   CompanyMatches,
-  FounderPreferencesState,
   Investor,
   Person,
   Profile,
   Rank,
   Round,
   TextFact,
-  UpsertFounderPreferences,
   UpsertUser,
   User,
 } from "@repo/shared";
@@ -40,12 +38,10 @@ const TTL = 60 * 60 * 1000;
 interface Options {
   /** Precomputed results served instantly (the demo company) */
   snapshot?: unknown;
-  /** Optional Aiven Postgres database for persisting profiles and founder preferences */
+  /** Optional Aiven Postgres database for caching public company profiles */
   db?: Database | null;
   now?: () => number;
 }
-
-const EMPTY_PREFS = { round: [], size: [], geo: [], lead: [], sector: [], timing: [] };
 
 /** Builds the onboarding view of a company from Cala's entity endpoints. */
 export function createOnboardingService(cala: CalaClient, options: Options = {}) {
@@ -66,7 +62,6 @@ export function createOnboardingService(cala: CalaClient, options: Options = {})
     ? snapshotSchema.parse(options.snapshot)
     : { searches: {}, profiles: {} };
   const cache = new Map<string, { at: number; value: Promise<unknown> }>();
-  const memoryPrefs = new Map<string, FounderPreferencesState>();
 
   /** Memoizes a lookup for an hour; failed lookups are not kept. */
   function remember<T>(key: string, load: () => Promise<T>): Promise<T> {
@@ -279,47 +274,6 @@ export function createOnboardingService(cala: CalaClient, options: Options = {})
         await db?.saveProfile(built).catch(() => undefined);
         return built;
       });
-    },
-
-    async getPreferences(id: string): Promise<FounderPreferencesState> {
-      if (db) {
-        const stored = await db.loadPreferences(id).catch(() => null);
-        if (stored) {
-          memoryPrefs.set(id, stored);
-          return stored;
-        }
-      }
-      return (
-        memoryPrefs.get(id) ?? {
-          companyId: id,
-          confirmed: false,
-          prefsDone: false,
-          prefs: EMPTY_PREFS,
-          updatedAt: null,
-        }
-      );
-    },
-
-    async savePreferences(
-      id: string,
-      input: UpsertFounderPreferences,
-    ): Promise<FounderPreferencesState> {
-      const next: FounderPreferencesState = {
-        companyId: id,
-        confirmed: input.confirmed,
-        prefsDone: input.prefsDone,
-        prefs: input.prefs,
-        updatedAt: new Date(now()).toISOString(),
-      };
-      memoryPrefs.set(id, next);
-      if (db) {
-        const saved = await db.savePreferences(id, input).catch(() => null);
-        if (saved) {
-          memoryPrefs.set(id, saved);
-          return saved;
-        }
-      }
-      return next;
     },
 
     async saveUser(input: UpsertUser): Promise<User> {

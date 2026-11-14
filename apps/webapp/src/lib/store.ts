@@ -1,9 +1,9 @@
 "use client";
 
 import { type CompanyMatch, companyMatchSchema } from "@repo/shared";
+import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { z } from "zod";
-import { api } from "./api";
 import { emptyPrefs, type Prefs } from "./prefs";
 
 /** Everything the founder has told us so far. Kept in localStorage, no account needed. */
@@ -12,18 +12,15 @@ export interface Progress {
   confirmed: boolean;
   prefs: Prefs;
   prefsDone: boolean;
-  /** Saved profile these answers belong to, once onboarding is done */
-  profileId: string | null;
 }
 
-const KEY = "bottega.onboarding.v1";
+const KEY = "bottega.onboarding.v2";
 
 export const fresh: Progress = {
   company: null,
   confirmed: false,
   prefs: emptyPrefs,
   prefsDone: false,
-  profileId: null,
 };
 
 // Bad or stale fields fall back to their defaults instead of crashing the page.
@@ -35,12 +32,15 @@ const progressSchema = z.object({
     .object({ round: list, size: list, geo: list, lead: list, sector: list, timing: list })
     .catch(emptyPrefs),
   prefsDone: z.boolean().catch(false),
-  profileId: z.string().nullable().catch(null),
 });
 
-function read(): Progress {
+function storageKey(userId: string | null): string {
+  return `${KEY}:${userId ?? "anonymous"}`;
+}
+
+function read(userId: string | null): Progress {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(storageKey(userId));
     if (!raw) return fresh;
     const parsed = progressSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) return fresh;
@@ -53,39 +53,62 @@ function read(): Progress {
   }
 }
 
+function hasDraft(state: Progress): boolean {
+  return Boolean(
+    state.company ||
+      state.confirmed ||
+      state.prefsDone ||
+      Object.values(state.prefs).some((answers) => answers.length > 0),
+  );
+}
+
 /** Progress state synced to localStorage and across tabs; `ready` is false until loaded. */
 export function useProgress() {
+  const { data: session, status } = useSession();
+  const userId = session?.user?.id ?? null;
   const [state, set] = useState<Progress>(fresh);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    set(read());
+    if (status === "loading") return;
+    const next = read(userId);
+    // Preserve an anonymous onboarding draft when the founder signs in to save a search.
+    if (userId && !hasDraft(next)) {
+      const anonymous = read(null);
+      if (hasDraft(anonymous)) {
+        try {
+          localStorage.setItem(storageKey(userId), JSON.stringify(anonymous));
+        } catch {
+          // Private mode or full storage: keep the migrated draft in memory.
+        }
+        set(anonymous);
+      } else {
+        set(next);
+      }
+    } else {
+      set(next);
+    }
     setReady(true);
-    const sync = (e: StorageEvent) => e.key === KEY && set(read());
+    const key = storageKey(userId);
+    const sync = (e: StorageEvent) => e.key === key && set(read(userId));
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
-  }, []);
+  }, [status, userId]);
 
-  const setState = useCallback((next: Progress | ((s: Progress) => Progress)) => {
-    set((s) => {
-      const value = typeof next === "function" ? next(s) : next;
-      try {
-        localStorage.setItem(KEY, JSON.stringify(value));
-      } catch {
-        // Private mode or full storage: keep going in memory.
-      }
-      if (value.company) {
-        api
-          .savePreferences(value.company.id, {
-            confirmed: value.confirmed,
-            prefsDone: value.prefsDone,
-            prefs: value.prefs,
-          })
-          .catch(() => undefined);
-      }
-      return value;
-    });
-  }, []);
+  const setState = useCallback(
+    (next: Progress | ((s: Progress) => Progress)) => {
+      set((s) => {
+        const value = typeof next === "function" ? next(s) : next;
+        try {
+          localStorage.setItem(storageKey(userId), JSON.stringify(value));
+        } catch {
+          // Private mode or full storage: keep going in memory.
+        }
+        return value;
+      });
+    },
+    [userId],
+  );
 
   return { state, setState, ready };
 }

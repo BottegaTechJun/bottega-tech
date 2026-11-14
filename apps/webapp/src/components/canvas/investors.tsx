@@ -81,18 +81,31 @@ export function Investors(props: Props) {
   });
   const running = run.status === "running";
   const empty = !rows.length && !running;
+  const partial = run.status === "incomplete" && rows.length > 0;
   if (empty && run.status === "idle") return null;
 
   return (
     <div className="h-full overflow-y-auto px-4 pt-4 pb-10 md:px-6">
       <div className="mx-auto w-full max-w-5xl">
         <div className="flex h-9 items-center gap-2 text-[13px]">
-          <span className="font-medium">Suggested investors</span>
+          <span className="font-medium">
+            {partial ? "Candidates found so far" : "Suggested investors"}
+          </span>
           {rows.length > 0 && (
             <span className="font-mono text-faint tabular-nums">{rows.length}</span>
           )}
           <span className="ml-auto">{meta}</span>
         </div>
+
+        {partial && (
+          <div className="mt-2 flex items-start gap-3 rounded-2xl border border-amber-300/20 bg-amber-300/8 px-4 py-3 text-sm">
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-200" />
+            <p className="leading-relaxed text-dim">
+              The search stopped before final ranking. These are sourced candidates from the work
+              completed so far; run it again to finish the match.
+            </p>
+          </div>
+        )}
 
         {empty ? (
           <div className="mt-2 flex flex-col items-center rounded-2xl border border-line bg-panel px-6 py-12 text-center">

@@ -1,5 +1,6 @@
-import { companyParamsSchema, type MatchupEvent, matchupRequestSchema } from "@repo/shared";
-import { parse, parseJson, type Routes } from "../../lib/http";
+import { type MatchupEvent, matchupRequestSchema } from "@repo/shared";
+import { requireUser } from "../../lib/auth";
+import { parseJson, type Routes } from "../../lib/http";
 import { HttpError } from "../../lib/http-error";
 import type { MatchupService } from "./matchup.service";
 
@@ -10,18 +11,14 @@ function frame(event: MatchupEvent): Uint8Array {
 }
 
 /** `service` is null when GEMINI_API_KEY is missing; the route then answers 503. */
-export function createMatchupRoutes(service: MatchupService | null): Routes {
+export function createMatchupRoutes(
+  service: MatchupService | null,
+  internalSecret?: string,
+): Routes {
   return {
-    "/api/matchup/:id/last": {
-      GET: async (req) => {
-        const { id } = parse(companyParamsSchema, req.params);
-        const saved = await service?.last(id);
-        if (!saved) throw new HttpError(404, "not_found", "No saved run for this company");
-        return Response.json(saved);
-      },
-    },
     "/api/matchup": {
       POST: async (req) => {
+        const userId = requireUser(req, internalSecret);
         if (!service) {
           throw new HttpError(503, "upstream_error", "Matchup agent is off: set GEMINI_API_KEY");
         }
@@ -41,6 +38,7 @@ export function createMatchupRoutes(service: MatchupService | null): Routes {
                 if (!stop.signal.aborted) controller.enqueue(frame(event));
               },
               stop.signal,
+              userId,
             );
             clearInterval(ping);
             if (!stop.signal.aborted) controller.close();

@@ -7,20 +7,20 @@ Founder onboarding (Next.js App Router, Tailwind v4, port 3001). Talks only to `
 1. **Find**: company search via `GET /api/onboarding/companies?name=`.
 2. **Confirm**: sourced profile via `GET /api/onboarding/companies/:id` (rounds, investors, team, Slush).
 3. **Preferences**: six one-tap questions (`src/lib/prefs.ts`).
-4. **Done**: saves the profile (`POST /api/profiles`, or `PUT` when this company already has one)
-   and opens its canvas. Home turns into a dashboard (company, facts, preferences, edit).
+4. **Done**: keeps the onboarding draft locally and opens the investor canvas. A search is persisted
+   only when the signed-in founder starts matching.
 5. **Warm paths**: canvas of the matchup agent's answer (`components/canvas/`), live SSE trace in a
-   collapsible side panel. `/warm-paths?profile=<id>` opens a saved profile on its latest finished
-   run, with a picker for older runs; "Run again" sends the `profileId`.
-6. **Follow-ups**: under a finished profile run, the composer (`components/canvas/ask.tsx`) sends a
-   question plus the run on screen as `followUp.parent`. The answer is a new run: the list shows the
-   question with "Back to previous answer", and the run picker labels it `↳ question`.
+   collapsible side panel. `/warm-paths?session=<id>` opens one user-owned search replay.
+6. **Follow-ups**: under a finished search, the composer (`components/canvas/ask.tsx`) sends a
+   question plus the current search as `followUp.parent`. The answer is a new user-owned search row.
 
-The sidebar lists saved profiles (`components/profiles.tsx`). Picking one makes it current.
+The sidebar lists the signed-in founder's saved searches (`components/profiles.tsx`). Picking one makes
+its captured company and preferences current.
 
 Steps live in the URL (`/?step=find|confirm|prefs`). Deep links to steps not reached yet redirect to the first open step.
 
-Progress lives in localStorage (`src/lib/store.ts`), validated with zod on read. No accounts.
+Progress lives in user-namespaced localStorage (`src/lib/store.ts`), validated with zod on read.
+Private search history requires the NextAuth session.
 
 ## Layout
 

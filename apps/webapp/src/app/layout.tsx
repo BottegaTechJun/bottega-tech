@@ -7,8 +7,13 @@ const sans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Bottega · Get started",
+  title: "Bottega",
   description: "Find the investors who lead rounds like your next one.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

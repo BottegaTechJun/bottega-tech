@@ -25,3 +25,4 @@ export * from "./brands";
 export * from "./matchup";
 export * from "./onboarding";
 export * from "./profiles";
+export * from "./search-sessions";

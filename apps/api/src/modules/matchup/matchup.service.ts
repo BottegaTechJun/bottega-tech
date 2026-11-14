@@ -6,6 +6,7 @@ import type {
   MatchupReplay,
   MatchupRequest,
   Prefs,
+  ProfileInput,
   RunSummary,
   SavedProfile,
 } from "@repo/shared";
@@ -17,6 +18,7 @@ import {
   type ToolSet,
   tool,
 } from "ai";
+import type { SearchSessionStore } from "../searches/searches.service";
 import {
   backing,
   createLedger,
@@ -24,6 +26,7 @@ import {
   ground,
   harvest,
   type Ledger,
+  partialGraph,
   replay,
 } from "./matchup.graph";
 import { agentAnswerSchema } from "./matchup.schemas";
@@ -35,14 +38,13 @@ const ROLE = `You match a startup with investors for its next round, using only 
 
 const RULES = `Rules: use only ids and source URLs that appear in tool results. Every suggested investor needs evidence: copy at least one source URL from a tool result that shows its activity, and leave out any investor without one. Search results carry no dates, so when an answer depends on how recent something is, use a dated funding round or event record (entity_retrieval) and cite its source. A missing is_lead means unknown, never "did not lead". State what happened, never predict intent. Suggest at most 5 investors.`;
 
-/** Field names the agent would otherwise spend a third of its calls discovering. */
-const CALA = `Cala shortcuts: skip entity_introspection and project straight from entity_retrieval. An investor or a company has outgoing PARTICIPATES_IN_FUNDING_ROUND (role INVESTOR or ISSUER, is_lead, dated sources; pass a limit of about 30), INVESTED_IN, HAS_HEADQUARTERS_IN, OPERATES_IN_INDUSTRY and PARTICIPATES_IN_EVENT, and incoming INVESTED_IN, FOUNDED, IS_CEO_OF, IS_BOARD_MEMBER_OF and WORKS_AT. A funding round has the properties round_label, announcement_date and transaction_value, and incoming PARTICIPATES_IN_FUNDING_ROUND for everyone in it. A field an entity lacks comes back empty. Leave properties out unless you need one. Never search for an entity whose id you already have.`;
+const CALA = `Cala read discipline: for every new entity UUID, call entity_introspection first. Use its response as the source of truth for available properties, relationship names, and incoming/outgoing direction. Then call entity_retrieval with only the exact fields and relationships that introspection returned; never guess a relationship or reverse its direction. Introspect independent entities in parallel and reuse any entity already seen. Useful relationships, when introspection confirms them, include PARTICIPATES_IN_FUNDING_ROUND, INVESTED_IN, HAS_HEADQUARTERS_IN, OPERATES_IN_INDUSTRY, PARTICIPATES_IN_EVENT, FOUNDED, IS_CEO_OF, IS_BOARD_MEMBER_OF and WORKS_AT. A funding round may expose round_label, announcement_date and transaction_value. Omit fields that are not available.`;
 
 const FIRST_RUN = `Start from the company's funding rounds and current investors. Follow those investors' other rounds to find funds that led later rounds (Series A and up) of similar companies, and how they connect to the company's investors: shared rounds, co-investments, people, events (Slush 2026 is ${SLUSH_2026}).
 When the company says what it wants next, prefer investors that fit it.
 ${RULES}
 ${CALA}
-Work fast: about 10 to 15 tool calls, several at once when they don't depend on each other. Then call ${ANSWER} once with your answer.`;
+Work fast: introspect independent seeds in parallel, then make about 10 to 15 total tool calls. Call ${ANSWER} once with your answer as soon as the evidence is sufficient.`;
 
 const FOLLOW_UP = `This is a follow-up. You already answered, and the founder now asks a question about that answer. Don't start over: revise the previous answer so it answers the question.
 The prompt lists each suggested investor with the rounds and sources already on record. Everything the previous run saw in Cala counts as a tool result, so reuse its ids and URLs and call tools only for what it doesn't show.
@@ -82,6 +84,8 @@ export interface MatchupDeps {
   store?: RunStore;
   /** Saved profiles: a run with a profileId reads its company and preferences and is kept under it */
   profiles?: ProfileRuns;
+  /** User-owned investor searches. The legacy stores remain only for compatibility tests. */
+  sessions?: SearchSessionStore;
 }
 
 export interface ProfileRuns {
@@ -107,6 +111,25 @@ function clip(text: string, max = 300): string {
 
 function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function toolError(output: unknown): string | null {
+  if (!output || typeof output !== "object") return null;
+  const record = output as Record<string, unknown>;
+  if (record.isError !== true) return null;
+  if (typeof record.error === "string") return clip(record.error, 180);
+  if (Array.isArray(record.content)) {
+    const text = record.content
+      .flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const value = (item as Record<string, unknown>).text;
+        return typeof value === "string" ? [value] : [];
+      })
+      .join(" ")
+      .trim();
+    if (text) return clip(text, 180);
+  }
+  return null;
 }
 
 const ROUNDS: Record<string, string> = { A: "Series A", B: "Series B", C: "Series C" };
@@ -139,7 +162,11 @@ export function wants(prefs: Prefs): string {
  * The user prompt: the company, a few known facts, and what it wants next. A follow-up's
  * context (see `followUpBrief`) takes the place of the closing request.
  */
-export function brief(req: MatchupRequest, profile: SavedProfile | null, followUp = ""): string {
+export function brief(
+  req: MatchupRequest,
+  profile: Pick<ProfileInput, "facts" | "prefs"> | null,
+  followUp = "",
+): string {
   const facts = profile?.facts;
   const known = [
     facts?.hq?.value && `HQ ${facts.hq.value}`,
@@ -220,14 +247,20 @@ export function createMatchupService(deps: MatchupDeps) {
   const { model, modelId, maxSteps = 16 } = deps;
 
   /** Runs one lookup and emits its progress. Never throws; failures become an `error` event. */
-  async function run(req: MatchupRequest, send: Emit, signal?: AbortSignal): Promise<void> {
+  async function run(
+    req: MatchupRequest,
+    send: Emit,
+    signal?: AbortSignal,
+    userId?: string,
+  ): Promise<void> {
     const events: MatchupEvent[] = [];
     const emit: Emit = (event) => {
       events.push(event);
       send(event);
     };
     const sessionId = req.sessionId ?? `warmup-${crypto.randomUUID()}`;
-    const profile = req.profileId ? ((await deps.profiles?.get(req.profileId)) ?? null) : null;
+    const savedProfile = req.profileId ? ((await deps.profiles?.get(req.profileId)) ?? null) : null;
+    const profile = req.profile ?? savedProfile;
     emit({
       type: "start",
       sessionId,
@@ -235,81 +268,109 @@ export function createMatchupService(deps: MatchupDeps) {
       traceUrl: deps.sessionUrl?.(sessionId) ?? null,
     });
 
+    // Save a resumable shell before the agent starts. A browser can close while the agent is
+    // working, but the founder should still see the session and its partial trace afterwards.
+    if (userId && deps.sessions && profile) {
+      await deps.sessions
+        .save(
+          userId,
+          sessionId,
+          profile,
+          { complete: false, savedAt: new Date().toISOString(), events: [...events] },
+          req.followUp?.parent ?? null,
+        )
+        .catch((err) => console.error("Saving initial search snapshot failed", err));
+    }
+
     const followUp = req.followUp;
-    await startActiveObservation(
-      "investor-matchup",
-      (root) =>
-        propagateAttributes(
-          {
-            sessionId,
-            traceName: "investor-matchup",
-            tags: [
-              "matchup",
-              ...(req.profileId ? [`profile:${req.profileId}`] : []),
-              ...(followUp ? ["follow-up"] : []),
-            ],
-            metadata: {
-              companyId: req.companyId,
-              model: modelId,
-              ...(req.profileId ? { profileId: req.profileId } : {}),
-              ...(followUp ? { parentRun: followUp.parent ?? "latest" } : {}),
+    try {
+      await startActiveObservation(
+        "investor-matchup",
+        (root) =>
+          propagateAttributes(
+            {
+              sessionId,
+              traceName: "investor-matchup",
+              tags: [
+                "matchup",
+                ...(req.profileId ? [`profile:${req.profileId}`] : []),
+                ...(userId ? [`user:${userId}`] : []),
+                ...(followUp ? ["follow-up"] : []),
+              ],
+              metadata: {
+                companyId: req.companyId,
+                model: modelId,
+                ...(req.profileId ? { profileId: req.profileId } : {}),
+                ...(userId ? { userId } : {}),
+                ...(followUp ? { parentRun: followUp.parent ?? "latest" } : {}),
+              },
             },
-          },
-          async () => {
-            const input = {
-              companyId: req.companyId,
-              profileId: req.profileId,
-              question: followUp?.question,
-            };
-            root.update({ input });
-            try {
-              if (req.profileId && !profile) throw new Error("No saved profile with this id");
-              const ledger = createLedger();
-              let prompt = brief(req, profile);
-              if (followUp && profile) {
-                const parent = await parentRun(profile.id, followUp.parent);
-                if (!parent) throw new Error("No saved run to follow up");
-                const done = parent.replay.events.filter((e) => e.type === "done").at(-1);
-                if (done?.type !== "done") throw new Error("The previous run did not finish");
-                // A profile keeps its runs when its company changes.
-                if (done.graph.companyId !== req.companyId) {
-                  throw new Error("That run was for another company");
+            async () => {
+              const input = {
+                companyId: req.companyId,
+                profileId: req.profileId,
+                question: followUp?.question,
+              };
+              root.update({ input });
+              try {
+                if (req.profileId && !savedProfile) {
+                  throw new Error("No saved profile with this id");
                 }
-                ledger.add(replay(parent.replay.events));
-                const known = [...ledger.entities.values()];
-                emit({
-                  type: "follow-up",
-                  question: followUp.question,
-                  parent: parent.id,
-                  entities: known,
-                  facts: [...ledger.facts.values()],
+                if (userId && !profile) {
+                  throw new Error("No founder context was provided for this search");
+                }
+                const ledger = createLedger();
+                let prompt = brief(req, profile);
+                if (followUp) {
+                  const parent = await parentRun(userId, req.profileId, followUp.parent);
+                  if (!parent) throw new Error("No saved run to follow up");
+                  const done = parent.replay.events.filter((e) => e.type === "done").at(-1);
+                  if (done?.type !== "done") throw new Error("The previous run did not finish");
+                  // A profile keeps its runs when its company changes.
+                  if (done.graph.companyId !== req.companyId) {
+                    throw new Error("That run was for another company");
+                  }
+                  ledger.add(replay(parent.replay.events));
+                  const known = [...ledger.entities.values()];
+                  emit({
+                    type: "follow-up",
+                    question: followUp.question,
+                    parent: parent.id,
+                    entities: known,
+                    facts: [...ledger.facts.values()],
+                  });
+                  prompt = brief(
+                    req,
+                    profile,
+                    followUpBrief(followUp.question, done.graph, ledger),
+                  );
+                }
+                root.update({ input: { ...input, prompt } });
+                const graph = await loop({
+                  req,
+                  prompt,
+                  followUp: Boolean(followUp),
+                  sessionId,
+                  emit,
+                  ledger,
+                  signal,
                 });
-                prompt = brief(req, profile, followUpBrief(followUp.question, done.graph, ledger));
+                root.update({ output: graph });
+              } catch (err) {
+                const text = signal?.aborted ? "Run stopped" : message(err);
+                root.update({ level: "ERROR", statusMessage: text });
+                emit({ type: "error", message: text });
               }
-              root.update({ input: { ...input, prompt } });
-              const graph = await loop({
-                req,
-                prompt,
-                followUp: Boolean(followUp),
-                sessionId,
-                emit,
-                ledger,
-                signal,
-              });
-              root.update({ output: graph });
-            } catch (err) {
-              const text = signal?.aborted ? "Run stopped" : message(err);
-              root.update({ level: "ERROR", statusMessage: text });
-              emit({ type: "error", message: text });
-            }
-          },
-        ),
-      { asType: "agent" },
-    );
-    await deps.after?.().catch(() => undefined);
-    await keep(req, profile, sessionId, events).catch((err) =>
-      console.error("Saving run failed", err),
-    );
+            },
+          ),
+        { asType: "agent" },
+      );
+    } finally {
+      await deps.after?.().catch(() => undefined);
+      await keep(req, profile, sessionId, events, userId).catch((err) =>
+        console.error("Saving run failed", err),
+      );
+    }
   }
 
   /**
@@ -318,15 +379,26 @@ export function createMatchupService(deps: MatchupDeps) {
    */
   async function keep(
     req: MatchupRequest,
-    profile: SavedProfile | null,
+    profile: Pick<ProfileInput, "company" | "facts" | "prefs"> | null,
     sessionId: string,
     events: MatchupEvent[],
+    userId?: string,
   ) {
-    if (!events.some((e) => e.type === "tool-result" || e.type === "done")) return;
-    const complete = events.some((e) => e.type === "done");
+    const complete =
+      events.some((e) => e.type === "done") && !events.some((e) => e.type === "error");
     const savedAt = new Date().toISOString();
-    if (profile) {
-      await deps.profiles?.addRun(profile.id, sessionId, { complete, savedAt, events });
+    if (userId && deps.sessions && profile) {
+      await deps.sessions.save(
+        userId,
+        sessionId,
+        profile,
+        { complete, savedAt, events },
+        req.followUp?.parent ?? null,
+      );
+      return;
+    }
+    if (profile && deps.profiles && req.profileId) {
+      await deps.profiles.addRun(req.profileId, sessionId, { complete, savedAt, events });
       return;
     }
     const { companyId } = req;
@@ -339,11 +411,22 @@ export function createMatchupService(deps: MatchupDeps) {
     return (await deps.store?.load(companyId)) ?? null;
   }
 
-  /** The run a follow-up builds on: the named one, else the profile's newest finished run. */
-  async function parentRun(profileId: string, runId?: string) {
-    const id = runId ?? (await deps.profiles?.listRuns(profileId))?.find((r) => r.complete)?.id;
+  /** The run a follow-up builds on, always scoped to the authenticated owner when available. */
+  async function parentRun(userId: string | undefined, profileId?: string, runId?: string) {
+    if (userId && deps.sessions) {
+      const id =
+        runId ?? (await deps.sessions.list(userId)).find((r) => r.status === "complete")?.id;
+      if (!id) return null;
+      const saved = await deps.sessions.load(userId, id);
+      return saved ? { id, replay: saved.replay } : null;
+    }
+    const id =
+      runId ??
+      (profileId
+        ? (await deps.profiles?.listRuns(profileId))?.find((r) => r.complete)?.id
+        : undefined);
     if (!id) return null;
-    const saved = await deps.profiles?.run(profileId, id);
+    const saved = profileId ? await deps.profiles?.run(profileId, id) : null;
     return saved ? { id, replay: saved } : null;
   }
 
@@ -379,73 +462,93 @@ export function createMatchupService(deps: MatchupDeps) {
       abortSignal: signal,
     });
 
-    let step = 0;
-    for await (const part of result.fullStream) {
-      switch (part.type) {
-        case "start-step":
-          emit({ type: "step", step: ++step });
-          break;
-        case "reasoning-delta":
-          if (part.text) emit({ type: "thinking", id: `${step}:${part.id}`, text: part.text });
-          break;
-        case "tool-call":
-          if (part.toolName === ANSWER) break;
-          emit({
-            type: "tool-call",
-            id: part.toolCallId,
-            tool: part.toolName,
-            input: clip(JSON.stringify(part.input)),
-          });
-          break;
-        case "tool-result": {
-          const found = harvest(part.output);
-          ledger.add(found);
-          const failed = (part.output as { isError?: unknown } | null)?.isError === true;
-          const lead = found.entities[0]?.name;
-          emit({
-            type: "tool-result",
-            id: part.toolCallId,
-            tool: part.toolName,
-            ok: !failed,
-            summary: failed
-              ? "Cala returned an error"
-              : part.toolName === "entity_introspection"
-                ? "Schema read"
-                : found.entities.length
-                  ? `${lead ? `${lead} · ` : ""}${found.entities.length} entities, ${found.facts.length} relations`
-                  : "Nothing found",
-            entities: found.entities.slice(0, MAX_EVENT_ITEMS),
-            facts: found.facts.slice(0, MAX_EVENT_ITEMS),
-          });
-          break;
-        }
-        case "tool-error":
-          emit({
-            type: "tool-result",
-            id: part.toolCallId,
-            tool: part.toolName,
-            ok: false,
-            summary: clip(message(part.error), 160),
-            entities: [],
-            facts: [],
-          });
-          break;
-        case "error":
-          throw part.error;
-      }
-    }
+    let partialSent = false;
+    const sendPartial = () => {
+      if (partialSent || (!ledger.entities.size && !ledger.facts.size)) return;
+      partialSent = true;
+      const graph = partialGraph(ledger, {
+        sessionId,
+        companyId: req.companyId,
+        companyName: req.name,
+      });
+      emit({ type: "done", graph });
+    };
 
-    const call = (await result.toolCalls).find((c) => c.toolName === ANSWER);
-    const parsed = agentAnswerSchema.safeParse(call?.input);
-    if (!parsed.success) {
-      throw new Error(
-        call ? "The agent's answer was malformed" : "The agent stopped before answering",
-      );
+    try {
+      let step = 0;
+      for await (const part of result.fullStream) {
+        switch (part.type) {
+          case "start-step":
+            emit({ type: "step", step: ++step });
+            break;
+          case "reasoning-delta":
+            if (part.text) emit({ type: "thinking", id: `${step}:${part.id}`, text: part.text });
+            break;
+          case "tool-call":
+            if (part.toolName === ANSWER) break;
+            emit({
+              type: "tool-call",
+              id: part.toolCallId,
+              tool: part.toolName,
+              input: clip(JSON.stringify(part.input)),
+            });
+            break;
+          case "tool-result": {
+            const found = harvest(part.output);
+            ledger.add(found);
+            const failed = (part.output as { isError?: unknown } | null)?.isError === true;
+            const lead = found.entities[0]?.name;
+            const details = toolError(part.output);
+            emit({
+              type: "tool-result",
+              id: part.toolCallId,
+              tool: part.toolName,
+              ok: !failed,
+              summary: failed
+                ? details
+                  ? `Cala: ${details}`
+                  : "Cala returned an error"
+                : part.toolName === "entity_introspection"
+                  ? "Schema read"
+                  : found.entities.length
+                    ? `${lead ? `${lead} · ` : ""}${found.entities.length} entities, ${found.facts.length} relations`
+                    : "Nothing found",
+              entities: found.entities.slice(0, MAX_EVENT_ITEMS),
+              facts: found.facts.slice(0, MAX_EVENT_ITEMS),
+            });
+            break;
+          }
+          case "tool-error":
+            emit({
+              type: "tool-result",
+              id: part.toolCallId,
+              tool: part.toolName,
+              ok: false,
+              summary: clip(message(part.error), 160),
+              entities: [],
+              facts: [],
+            });
+            break;
+          case "error":
+            throw part.error;
+        }
+      }
+
+      const call = (await result.toolCalls).find((c) => c.toolName === ANSWER);
+      const parsed = agentAnswerSchema.safeParse(call?.input);
+      if (!parsed.success) {
+        throw new Error(
+          call ? "The agent's answer was malformed" : "The agent stopped before answering",
+        );
+      }
+      const answer = parsed.data;
+      const graph = ground(answer, ledger, { sessionId, companyId: req.companyId });
+      emit({ type: "done", graph });
+      return graph;
+    } catch (err) {
+      sendPartial();
+      throw err;
     }
-    const answer = parsed.data;
-    const graph = ground(answer, ledger, { sessionId, companyId: req.companyId });
-    emit({ type: "done", graph });
-    return graph;
   }
 
   return { run, last, modelId };

@@ -8,7 +8,15 @@ import {
 } from "@repo/shared";
 import { jsonSchema, simulateReadableStream, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-import { backing, createLedger, dealDate, ground, harvest, replay } from "./matchup.graph";
+import {
+  backing,
+  createLedger,
+  dealDate,
+  ground,
+  harvest,
+  partialGraph,
+  replay,
+} from "./matchup.graph";
 import { agentAnswerSchema } from "./matchup.schemas";
 import {
   brief,
@@ -133,6 +141,23 @@ describe("ground", () => {
     // Made-up investor, invented URL and the Karma link are all dropped.
     expect(graph.dropped).toBe(3);
     expect(graph.entities.map((e) => e.id).sort()).toEqual([COMPANY, LIFELINE, ROUND].sort());
+  });
+});
+
+describe("partialGraph", () => {
+  test("keeps sourced investor candidates when the agent stops before answering", () => {
+    const ledger = createLedger();
+    ledger.add(harvest(retrieval));
+
+    const graph = partialGraph(ledger, {
+      sessionId: "s",
+      companyId: COMPANY,
+      companyName: "In Parallel",
+    });
+
+    expect(graph.investors.map((investor) => investor.id)).toEqual([LIFELINE]);
+    expect(graph.investors[0]?.evidence.map((cite) => cite.url)).toEqual([PRESS]);
+    expect(graph.summary).toContain("stopped before the full match");
   });
 });
 
@@ -655,7 +680,7 @@ describe("instructions", () => {
       const text = instructions(followUp, new Date("2026-11-14T10:00:00Z"));
       expect(text).toContain("Today is 2026-11-14.");
       expect(text).toContain("Every suggested investor needs evidence");
-      expect(text).toContain("skip entity_introspection");
+      expect(text).toContain("entity_introspection first");
       expect(text.includes("This is a follow-up")).toBe(followUp);
     }
   });

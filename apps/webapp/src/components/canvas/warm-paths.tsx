@@ -1,6 +1,6 @@
 "use client";
 
-import type { CompanyMatch, Entity, RunSummary, SavedProfile } from "@repo/shared";
+import type { CompanyMatch, Entity, SearchSessionInput, SearchSessionSummary } from "@repo/shared";
 import { ReactFlowProvider } from "@xyflow/react";
 import {
   ArrowLeft,
@@ -13,10 +13,11 @@ import {
   Square,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
-import { idle, lastMatchup, type Run, reduce, settle, streamMatchup } from "@/lib/matchup";
+import { idle, type Run, reduce, settle, streamMatchup } from "@/lib/matchup";
 import { useProgress } from "@/lib/store";
 import { suggestions } from "@/lib/suggest";
 import { Ask, Asked } from "./ask";
@@ -32,25 +33,36 @@ import { SessionLink, TraceList } from "./trace-panel";
 import { Wants } from "./wants";
 
 /** Demo company from docs/CONTEXT.md §2, used when onboarding has not picked one. */
-const DEMO: Pick<CompanyMatch, "id" | "name" | "website"> = {
+const DEMO: CompanyMatch = {
   id: "6ebd9536-fcc5-5921-8938-ce3497eb6262",
   name: "In Parallel",
+  description: null,
+  hq: null,
   website: "in-parallel.com",
 };
 
 const small = "h-8 px-3.5 text-[13px]";
 
+/** Keep refreshes on the saved session without retriggering the App Router loader. */
+function rememberSession(id: string): void {
+  const search = new URLSearchParams(window.location.search);
+  search.delete("run");
+  search.set("session", id);
+  window.history.replaceState(window.history.state, "", `/warm-paths?${search.toString()}`);
+}
+
 export function WarmPaths() {
+  const { data: authSession, status: authStatus } = useSession();
   const { state, ready } = useProgress();
-  const asked = useSearchParams().get("profile");
-  const profileId = ready ? (asked ?? state.profileId) : null;
-  const [saved, setSaved] = useState<SavedProfile | null>(null);
+  const params = useSearchParams();
+  const asked = params.get("session");
+  const auto = useRef(params.get("run") === "1");
+  const sessionId = ready ? asked : null;
+  const [context, setContext] = useState<SearchSessionInput | null>(null);
   const [missing, setMissing] = useState(false);
-  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [runs, setRuns] = useState<SearchSessionSummary[]>([]);
   const [shown, setShown] = useState<string | null>(null);
-  const company = saved?.company ?? (profileId ? null : state.company) ?? DEMO;
-  // Without a profile the canvas follows the onboarding company.
-  const legacy = profileId ? null : company.id;
+  const company = context?.company ?? state.company ?? DEMO;
   const [run, dispatch] = useReducer(
     (
       current: Run,
@@ -72,13 +84,15 @@ export function WarmPaths() {
   /** Runs the agent; with a question, as a follow-up on the run on screen. */
   const start = useCallback(
     async (question?: string) => {
+      if (authStatus !== "authenticated" || !authSession?.user) {
+        void signIn("google");
+        return;
+      }
       abort.current?.abort();
       const controller = new AbortController();
       abort.current = controller;
-      const sessionId = `warmup-${crypto.randomUUID()}`;
-      // Without a parent the API picks the newest finished run, which is the one on screen
-      // when it just finished and its id hasn't come back yet.
-      const followUp = question && saved ? { question, ...(shown ? { parent: shown } : {}) } : null;
+      const sessionId = crypto.randomUUID();
+      const followUp = question && shown ? { question, parent: shown } : null;
       setSelection(null);
       setExplored(false);
       setPanel(true);
@@ -92,25 +106,29 @@ export function WarmPaths() {
           : {}),
       });
       try {
+        const facts = context?.facts ?? (await api.profile(company.id).catch(() => null));
+        const input = { company, facts, prefs: context?.prefs ?? state.prefs };
+        setContext(input);
         await streamMatchup(
           {
             companyId: company.id,
             name: company.name,
             sessionId,
-            ...(saved ? { profileId: saved.id } : {}),
+            profile: input,
             ...(followUp ? { followUp } : {}),
           },
           (event) => dispatch({ type: "event", event }),
           controller.signal,
         );
         dispatch({ type: "settle" });
-        if (saved) {
-          const next = await api.runs(saved.id).catch(() => null);
-          // Another run or a history pick may have taken over while this one was saving.
-          if (next && abort.current === controller) {
-            setRuns(next);
-            // A run that failed before its first Cala result is not saved.
-            setShown(next.find((r) => r.sessionId === sessionId)?.id ?? null);
+        const next = await api.searches().catch(() => null);
+        // Another run or a history pick may have taken over while this one was saving.
+        if (next && abort.current === controller) {
+          setRuns(next);
+          const saved = next.find((r) => r.id === sessionId);
+          if (saved) {
+            setShown(saved.id);
+            rememberSession(saved.id);
           }
         }
       } catch (err) {
@@ -123,69 +141,76 @@ export function WarmPaths() {
               ? err.message
               : "Lookup failed",
         });
+        const next = await api.searches().catch(() => null);
+        if (next && abort.current === controller) {
+          setRuns(next);
+          const saved = next.find((r) => r.id === sessionId);
+          if (saved) {
+            setShown(saved.id);
+            rememberSession(saved.id);
+          }
+        }
       }
     },
-    [company.id, company.name, saved, shown],
+    [authSession?.user, authStatus, company, context, shown, state.prefs],
   );
 
   useEffect(() => () => abort.current?.abort(), []);
 
-  // A profile opens on its latest finished run; the agent only runs when asked.
+  // A search session opens on its saved replay; the agent only runs when asked.
   useEffect(() => {
     if (!ready) return;
     let live = true;
     abort.current?.abort();
     dispatch({ type: "reset" });
-    setSaved(null);
+    setContext(null);
     setMissing(false);
     setRuns([]);
     setShown(null);
-    if (!profileId) {
-      if (!legacy) return;
-      lastMatchup(legacy).then((last) => {
-        if (live && last) dispatch({ type: "replay", saved: last });
-      });
+    if (!sessionId) {
       return () => {
         live = false;
       };
     }
     (async () => {
-      const profile = await api.saved(profileId).catch(() => null);
+      const session = await api.search(sessionId).catch(() => null);
       if (!live) return;
-      if (!profile) {
+      if (!session) {
         setMissing(true);
         return;
       }
-      setSaved(profile);
-      const list = await api.runs(profile.id).catch(() => []);
+      setContext(session.input);
+      setShown(session.id);
+      const list = await api.searches().catch(() => []);
       if (!live) return;
       setRuns(list);
-      const pick = list.find((r) => r.complete) ?? list[0];
-      if (!pick) return;
-      setShown(pick.id);
-      const replay = await api.run(profile.id, pick.id).catch(() => null);
-      if (live && replay) dispatch({ type: "replay", saved: replay });
+      dispatch({ type: "replay", saved: session.replay });
     })();
     return () => {
       live = false;
     };
-  }, [ready, profileId, legacy]);
+  }, [ready, sessionId]);
+
+  // Fresh from onboarding: start the agent without another click.
+  useEffect(() => {
+    if (!auto.current || !ready || sessionId || !company) return;
+    auto.current = false;
+    void start();
+  }, [ready, sessionId, company, start]);
 
   /** Shows a saved run. A run that can't be loaded leaves the screen as it is. */
-  const open = useCallback(
-    async (runId: string) => {
-      if (!saved) return;
-      const replay = await api.run(saved.id, runId).catch(() => null);
-      if (!replay) return;
-      abort.current?.abort();
-      abort.current = null;
-      setShown(runId);
-      setSelection(null);
-      setExplored(false);
-      dispatch({ type: "replay", saved: replay });
-    },
-    [saved],
-  );
+  const open = useCallback(async (runId: string) => {
+    const session = await api.search(runId).catch(() => null);
+    if (!session) return;
+    abort.current?.abort();
+    abort.current = null;
+    rememberSession(runId);
+    setShown(runId);
+    setContext(session.input);
+    setSelection(null);
+    setExplored(false);
+    dispatch({ type: "replay", saved: session.replay });
+  }, []);
 
   const select = useCallback((next: Selection) => {
     setSelection(next);
@@ -202,20 +227,20 @@ export function WarmPaths() {
     let parent = revised ? byId.get(revised.parent) : undefined;
     while (parent?.question && out.length < 20) {
       out.push(parent.question);
-      parent = parent.parent ? byId.get(parent.parent) : undefined;
+      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
     }
     return out;
   }, [runs, revised]);
   // Chips are checked against this answer's data, so they change with every run.
-  const prefs = saved?.prefs;
+  const prefs = context?.prefs ?? state.prefs;
   const chips = useMemo(
     () => (prefs ? suggestions(prefs, run, { asked: questions }) : []),
     [prefs, run, questions],
   );
   const [sites, setSites] = useState<Record<string, string>>({});
   const domains = useMemo(
-    () => brands(run, company, saved?.facts ?? null, sites),
-    [run, company, saved, sites],
+    () => brands(run, company, context?.facts ?? null, sites),
+    [run, company, context, sites],
   );
   // Logos for the answer's companies and investors come from Cala websites, not the agent.
   const wanted = (graph?.entities ?? [])
@@ -297,7 +322,7 @@ export function WarmPaths() {
           run={run}
           id={pick}
           company={company}
-          prefs={saved?.prefs ?? state.prefs}
+          prefs={context?.prefs ?? state.prefs}
           domains={domains}
           select={select}
           active={active}
@@ -327,7 +352,7 @@ export function WarmPaths() {
   );
 
   return (
-    <Shell active="paths" profile={saved?.id ?? null} aside={aside}>
+    <Shell active="paths" profile={shown} aside={aside}>
       <div className="flex h-[100dvh] flex-col md:h-[calc(100dvh-1rem)]">
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
           <span className="flex shrink-0 items-center gap-2 text-sm font-medium whitespace-nowrap">
@@ -361,7 +386,7 @@ export function WarmPaths() {
                 type="button"
                 className={`btn-primary ${small}`}
                 onClick={() => start()}
-                disabled={!ready || (Boolean(profileId) && !saved)}
+                disabled={!ready || !company}
               >
                 {run.status === "idle" ? (
                   <Play className="size-3.5" />
@@ -389,10 +414,10 @@ export function WarmPaths() {
             company={{
               name: company.name,
               website: company.website,
-              hq: saved?.company.hq ?? state.company?.hq ?? null,
+              hq: context?.company.hq ?? state.company?.hq ?? null,
             }}
-            stage={saved?.facts?.stage?.value ?? null}
-            prefs={saved?.prefs ?? state.prefs}
+            stage={context?.facts?.stage?.value ?? null}
+            prefs={context?.prefs ?? state.prefs}
           />
         )}
 
@@ -508,7 +533,7 @@ export function WarmPaths() {
           )}
         </div>
 
-        {saved && run.status !== "idle" && (
+        {context && run.status !== "idle" && (
           <Ask chips={chips} status={run.status} ask={(question) => void start(question)} />
         )}
       </div>
@@ -529,12 +554,14 @@ const short = (text: string, max = 36) =>
   text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
 
 /** "14 Nov, 18:20 · ↳ Only Nordic funds · 3 investors" */
-function runLabel(run: RunSummary): string {
-  return [
-    when(run.savedAt),
-    run.question && `↳ ${short(run.question)}`,
-    run.complete ? `${run.picks} ${run.picks === 1 ? "investor" : "investors"}` : "partial",
-  ]
+function runLabel(run: SearchSessionSummary): string {
+  const result =
+    run.status === "complete"
+      ? `${run.picks} ${run.picks === 1 ? "investor" : "investors"}`
+      : run.status === "running"
+        ? "in progress"
+        : "partial result";
+  return [when(run.savedAt), run.question && `↳ ${short(run.question)}`, result]
     .filter(Boolean)
     .join(" · ");
 }
@@ -545,7 +572,7 @@ function History({
   shown,
   open,
 }: {
-  runs: RunSummary[];
+  runs: SearchSessionSummary[];
   shown: string | null;
   open: (id: string) => void;
 }) {

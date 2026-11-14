@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { citeSchema } from "./onboarding";
+import { profileInputSchema } from "./profiles";
 
 /** Contracts for the investor matchup agent (apps/webapp ↔ apps/api). */
 
@@ -28,13 +29,15 @@ export const matchupRequestSchema = z
     name: z.string().trim().min(1, "name is required").max(200),
     /** Saved profile to run for: its company and preferences shape the search, the run is kept under it */
     profileId: z.uuid("profileId must be a UUID").optional(),
+    /** Founder context sent with a search; persisted as part of the user-owned search session. */
+    profile: profileInputSchema.optional(),
     /** Optional Langfuse session id; the API makes one when missing */
     sessionId: slug("sessionId").optional(),
     followUp: followUpSchema.optional(),
   })
-  .refine((req) => !req.followUp || req.profileId, {
+  .refine((req) => !req.followUp || req.profileId || req.profile, {
     path: ["followUp"],
-    message: "Follow-ups need a profileId",
+    message: "Follow-ups need a profile or profileId",
   });
 export type MatchupRequest = z.infer<typeof matchupRequestSchema>;
 
