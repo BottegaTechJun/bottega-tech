@@ -7,37 +7,36 @@ It is the only place that knows `CALA_API_KEY`.
 
 ```
 src/
-  index.ts            bootstrap: builds the client/service, mounts route tables, starts Bun.serve
+  index.ts            bootstrap: builds the shared Cala client, mounts route tables, starts Bun.serve
   config/env.ts       zod-validated env; the process exits at startup if it is invalid
   lib/
     http-error.ts     HttpError + the {error: {code, message}} response shape
     http.ts           Routes type, request validation (parseJson/parseQuery/parse),
                       middleware (CORS, error handling, request logging)
+    cache.ts          two-tier cache (in-memory + optional Valkey) keyed by SHA-256
   modules/
     health/           GET /health
-    cala/
-      cala.client.ts  thin typed Cala HTTP client: timeout, retry with backoff on 429, error mapping
-      cala.service.ts calls the client and normalizes into @repo/shared contracts
-      cala.routes.ts  our endpoints
+    cala/             Cala integration only, no routes of its own
+      cala.client.ts  thin typed Cala HTTP client: timeout, retry on 429, error mapping, cache
       cala.schemas.ts zod schemas for Cala's raw responses
-      cala.test.ts    client + service tests with a mocked fetch
+      cala.test.ts    client tests with a mocked fetch
 ```
 
 ## Endpoints
 
-| Ours                              | Cala                        |
-| --------------------------------- | --------------------------- |
-| `GET  /health`                    | —                           |
-| `POST /api/search` `{input}`      | `POST /v1/knowledge/search` |
-| `POST /api/query` `{input}`       | `POST /v1/knowledge/query`  |
-| `GET  /api/entities?name=&limit=` | `GET  /v1/entities`         |
-| `GET  /api/entities/:id`          | `POST /v1/entities/{id}`    |
+| Ours          | Notes                                 |
+| ------------- | ------------------------------------- |
+| `GET /health` | `{ status: "ok" }` (`HealthResponse`) |
+
+Feature endpoints get added here as they land.
 
 ## Notes
 
-- **Adding a feature:** create `modules/<name>/` with routes/service/schemas/tests, export a
-  `Routes` table (path → method → handler), and spread it into `routes` in `index.ts`.
-  The middleware in `lib/http.ts` is applied to every route there.
+- **Adding a feature:** create `modules/<name>/` with `<name>.routes.ts`, `<name>.service.ts`,
+  `<name>.schemas.ts` and `<name>.test.ts`. The service takes the Cala client
+  (`createXService(cala)`), and the routes take the service and export a `Routes` table
+  (path → method → handler). Spread it into `routes` in `index.ts`. The middleware in
+  `lib/http.ts` is applied to every route there.
 - **Handlers** validate input with `parseJson` / `parseQuery` / `parse` and return
   `Response.json(...)`. To fail, `throw new HttpError(status, code, message)`; never build
   error responses by hand.
