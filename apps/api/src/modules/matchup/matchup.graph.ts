@@ -39,7 +39,7 @@ function payloads(output: unknown): unknown[] {
       try {
         out.push(JSON.parse(text));
       } catch {
-        // prose output (knowledge_search) has no JSON to read
+        // prose output has no JSON to read
       }
     }
   } else out.push(output);
