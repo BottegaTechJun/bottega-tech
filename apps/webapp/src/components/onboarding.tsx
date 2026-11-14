@@ -80,7 +80,7 @@ export function Onboarding() {
     const { company } = latest.current;
     setState((s) => ({ ...s, prefsDone: true }));
     if (!company) return home();
-    router.push("/warm-paths?run=1");
+    router.push("/warm-paths?run=1&fresh=1");
   };
 
   const first = questions.findIndex((q) => state.prefs[q.id].length === 0);

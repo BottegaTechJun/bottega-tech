@@ -216,6 +216,19 @@ describe("cala client", () => {
     expect(error).toMatchObject({ status: 400, code: "bad_request", message: "Bad query" });
   });
 
+  test("preserves Cala's 402 detail instead of hiding it behind a status code", async () => {
+    const fetch = mockFetch(json({ detail: "API access is not enabled for this workspace" }, 402));
+    const error = await clientWith(fetch)
+      .query("startups")
+      .catch((e) => e);
+
+    expect(error).toMatchObject({
+      status: 502,
+      code: "upstream_error",
+      message: "API access is not enabled for this workspace",
+    });
+  });
+
   test("maps entity_not_found_error to not_found", async () => {
     const fetch = mockFetch(
       json({ error: { error_type: "entity_not_found_error", message: "No such entity" } }, 422),

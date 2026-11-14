@@ -47,6 +47,7 @@ const small = "h-8 px-3.5 text-[13px]";
 function rememberSession(id: string): void {
   const search = new URLSearchParams(window.location.search);
   search.delete("run");
+  search.delete("fresh");
   search.set("session", id);
   window.history.replaceState(window.history.state, "", `/warm-paths?${search.toString()}`);
 }
@@ -56,8 +57,9 @@ export function WarmPaths() {
   const { state, ready } = useProgress();
   const params = useSearchParams();
   const asked = params.get("session");
+  const fresh = params.get("fresh") === "1";
   const auto = useRef(params.get("run") === "1");
-  const sessionId = ready ? asked : null;
+  const sessionId = ready && !fresh ? asked : null;
   const [context, setContext] = useState<SearchSessionInput | null>(null);
   const [missing, setMissing] = useState(false);
   const [runs, setRuns] = useState<SearchSessionSummary[]>([]);
