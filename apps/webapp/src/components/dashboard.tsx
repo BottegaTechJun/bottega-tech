@@ -1,6 +1,6 @@
 "use client";
 
-import type { CompanyMatch, ManualCompany, Profile } from "@repo/shared";
+import type { CompanyMatch, Profile } from "@repo/shared";
 import { ArrowRight, Globe, MapPin, PenLine, RotateCcw, Search } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -14,7 +14,6 @@ import type { StepId } from "./step-cards";
 interface Props {
   company: CompanyMatch;
   prefs: Prefs;
-  manualCompany?: ManualCompany | null;
   open: (step: StepId) => void;
   reset: () => void;
 }
@@ -22,8 +21,7 @@ interface Props {
 type Load =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "done"; profile: Profile }
-  | { kind: "manual" };
+  | { kind: "done"; profile: Profile };
 
 const rows: { id: keyof Prefs; label: string }[] = [
   { id: "round", label: "Round" },
@@ -35,15 +33,11 @@ const rows: { id: keyof Prefs; label: string }[] = [
 ];
 
 /** Home once onboarding is complete: the company, its facts and the saved preferences. */
-export function Dashboard({ company, prefs, manualCompany = null, open, reset }: Props) {
-  const [load, setLoad] = useState<Load>({ kind: manualCompany ? "manual" : "loading" });
+export function Dashboard({ company, prefs, open, reset }: Props) {
+  const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [sure, setSure] = useState(false);
 
   const fetchProfile = useCallback(() => {
-    if (manualCompany) {
-      setLoad({ kind: "manual" });
-      return;
-    }
     setLoad({ kind: "loading" });
     api
       .profile(company.id)
@@ -54,13 +48,13 @@ export function Dashboard({ company, prefs, manualCompany = null, open, reset }:
           message: err instanceof ApiError ? err.message : "Could not load the company",
         }),
       );
-  }, [company.id, manualCompany]);
+  }, [company.id]);
 
   useEffect(fetchProfile, [fetchProfile]);
 
   const profile = load.kind === "done" ? load.profile : null;
-  const website = manualCompany?.website ?? profile?.website?.value ?? company.website;
-  const hq = manualCompany?.hq ?? profile?.hq?.value ?? company.hq;
+  const website = profile?.website?.value ?? company.website;
+  const hq = profile?.hq?.value ?? company.hq;
 
   return (
     <div className="flex flex-col gap-3">
@@ -84,11 +78,6 @@ export function Dashboard({ company, prefs, manualCompany = null, open, reset }:
           </div>
         </div>
         {profile && <SlushPill profile={profile} />}
-        {manualCompany && (
-          <span className="inline-flex h-9 items-center rounded-full border border-dashed border-line px-4 text-sm text-faint">
-            Founder-provided profile
-          </span>
-        )}
       </header>
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -134,7 +123,6 @@ export function Dashboard({ company, prefs, manualCompany = null, open, reset }:
             </div>
           )}
           {profile && <Facts profile={profile} />}
-          {manualCompany && <ManualFacts company={manualCompany} />}
         </section>
 
         <section className="card animate-rise p-5 [animation-delay:120ms]">
@@ -178,32 +166,6 @@ export function Dashboard({ company, prefs, manualCompany = null, open, reset }:
         )}
       </footer>
     </div>
-  );
-}
-
-function ManualFacts({ company }: { company: ManualCompany }) {
-  const cells = [
-    { label: "What they build", value: company.industry ?? "—" },
-    { label: "Current stage", value: company.stage ?? "—" },
-    { label: "Next round", value: company.targetRound ?? "—" },
-    {
-      label: "Target amount",
-      value: company.targetAmount ?? "—",
-      sub: company.similarCompanies.length
-        ? `Using ${company.similarCompanies.length} similar company${company.similarCompanies.length === 1 ? "" : "ies"}`
-        : "No similar companies selected",
-    },
-  ];
-  return (
-    <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
-      {cells.map((cell) => (
-        <div key={cell.label} className="min-w-0">
-          <dt className="text-xs text-faint">{cell.label}</dt>
-          <dd className="mt-0.5 truncate text-sm">{cell.value}</dd>
-          {cell.sub && <dd className="truncate text-xs text-dim">{cell.sub}</dd>}
-        </div>
-      ))}
-    </dl>
   );
 }
 

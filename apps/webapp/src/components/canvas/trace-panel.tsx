@@ -105,7 +105,7 @@ export function TraceList({ run }: { run: Run }) {
   if (groups.length === 0) {
     return (
       <p className="py-6 text-sm text-faint">
-        {live ? "Connecting to your company data…" : "Each step the research takes shows up here."}
+        {live ? "Connecting to Cala…" : "Each step the agent takes shows up here."}
       </p>
     );
   }

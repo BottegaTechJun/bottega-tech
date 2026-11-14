@@ -1,16 +1,13 @@
 "use client";
 
-import type { CompanyMatch, ManualCompany } from "@repo/shared";
-import { ArrowRight, ChevronLeft, MapPin, RotateCcw, Search } from "lucide-react";
+import type { CompanyMatch } from "@repo/shared";
+import { ArrowRight, MapPin, RotateCcw, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ApiError, api } from "@/lib/api";
 import { Logo } from "./logo";
-import { ManualCompanyForm } from "./manual-company-form";
 
 interface Props {
   initial: string;
-  changeDraft: (value: string) => void;
-  manualPick: (company: ManualCompany) => void;
   pick: (company: CompanyMatch) => void;
 }
 
@@ -20,22 +17,13 @@ type Result =
   | { kind: "error"; message: string }
   | { kind: "done"; companies: CompanyMatch[] };
 
-export function FindStep({ initial, changeDraft, manualPick, pick }: Props) {
+const DEMO = "In Parallel";
+
+export function FindStep({ initial, pick }: Props) {
   const [name, setName] = useState(initial);
   const [result, setResult] = useState<Result>({ kind: "idle" });
   const [attempt, setAttempt] = useState(0);
-  const [manualStarted, setManualStarted] = useState(false);
   const short = name.trim().length === 1;
-
-  const setQuery = (value: string) => {
-    setName(value);
-    changeDraft(value);
-    setManualStarted(false);
-  };
-
-  const startManual = () => {
-    if (name.trim()) setManualStarted(true);
-  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt re-runs the search on Retry
   useEffect(() => {
@@ -64,45 +52,9 @@ export function FindStep({ initial, changeDraft, manualPick, pick }: Props) {
     };
   }, [name, attempt]);
 
-  if (manualStarted) {
-    return (
-      <div className="mx-auto w-full max-w-2xl">
-        <button
-          type="button"
-          onClick={() => setManualStarted(false)}
-          className="group mb-6 inline-flex items-center gap-1.5 text-sm text-dim transition hover:text-text"
-        >
-          <ChevronLeft className="size-4 transition group-hover:-translate-x-0.5" />
-          Search again
-        </button>
-        <ManualCompanyForm initialName={name} complete={manualPick} />
-      </div>
-    );
-  }
-
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <p className="label">Company identity</p>
-      <h2 className="mt-2 text-2xl font-semibold tracking-tight">
-        Which company are you raising for?
-      </h2>
-      <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-        Start with the name investors know. We'll match it to public company data and use what we
-        find to shape your path.
-      </p>
-
-      <div className="mt-5 flex items-start gap-3 rounded-2xl border border-line bg-raise/60 p-4">
-        <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-accent/10 text-accent">
-          <Search className="size-4" />
-        </span>
-        <div>
-          <p className="text-sm font-medium">Use the name people know</p>
-          <p className="mt-1 text-sm leading-relaxed text-faint">
-            We'll look for a public profile first. If we don't find one, you can add the details
-            yourself.
-          </p>
-        </div>
-      </div>
+      <h2 className="text-2xl font-semibold tracking-tight">Find your company</h2>
 
       <form
         className="contents"
@@ -119,7 +71,7 @@ export function FindStep({ initial, changeDraft, manualPick, pick }: Props) {
             // biome-ignore lint/a11y/noAutofocus: the single input on this step
             autoFocus
             value={name}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setName(e.target.value)}
             placeholder="Company name"
             enterKeyHint="search"
             className="h-full flex-1 bg-transparent text-base outline-none placeholder:text-faint"
@@ -131,6 +83,15 @@ export function FindStep({ initial, changeDraft, manualPick, pick }: Props) {
       </form>
 
       {result.kind === "idle" && short && <p className="mt-4 text-sm text-faint">Keep typing.</p>}
+
+      {result.kind === "idle" && !short && (
+        <div className="mt-4 flex items-center gap-2 text-sm text-faint">
+          Try
+          <button type="button" className="chip h-8" onClick={() => setName(DEMO)}>
+            {DEMO}
+          </button>
+        </div>
+      )}
 
       <div className="mt-4 flex flex-col gap-1.5">
         {result.kind === "loading" &&
@@ -152,37 +113,29 @@ export function FindStep({ initial, changeDraft, manualPick, pick }: Props) {
 
         {result.kind === "done" && result.companies.length === 0 && (
           <div className="card px-5 py-4 text-sm">
-            <p className="font-medium">We don't have a match yet.</p>
+            <p className="text-dim">No company with that name in Cala.</p>
             <p className="mt-1 text-faint">
-              That's okay. Add a few details and we'll keep building your investor path.
+              Try the legal name or drop suffixes like Oy or Ltd. Or{" "}
+              <button
+                type="button"
+                className="text-text underline-offset-4 hover:underline"
+                onClick={() => setName(DEMO)}
+              >
+                try {DEMO}
+              </button>
+              .
             </p>
-            <button type="button" className="btn-primary mt-4" onClick={startManual}>
-              Continue with {name.trim()}
-              <ArrowRight className="size-4" />
-            </button>
-          </div>
-        )}
-
-        {result.kind === "done" && result.companies.length > 0 && (
-          <div className="flex items-center justify-between gap-3 px-1 text-sm text-faint">
-            <span>Choose your company to review its public facts.</span>
-            <button
-              type="button"
-              className="shrink-0 text-text underline-offset-4 hover:underline"
-              onClick={startManual}
-            >
-              Not here?
-            </button>
           </div>
         )}
 
         {result.kind === "done" &&
-          result.companies.map((company) => (
+          result.companies.map((company, i) => (
             <button
               key={company.id}
               type="button"
               onClick={() => pick(company)}
               onMouseEnter={() => void api.profile(company.id).catch(() => undefined)}
+              style={{ animationDelay: `${i * 40}ms` }}
               className="group card flex animate-rise items-center gap-4 px-4 py-3 text-left transition hover:border-edge hover:bg-raise"
             >
               <Logo name={company.name} website={company.website} />

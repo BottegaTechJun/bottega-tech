@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { citeSchema, manualCompanySchema } from "./onboarding";
+import { citeSchema } from "./onboarding";
 
 /** Contracts for the investor matchup agent (apps/webapp ↔ apps/api). */
 
@@ -8,8 +8,6 @@ import { citeSchema, manualCompanySchema } from "./onboarding";
 export const matchupRequestSchema = z.object({
   companyId: z.uuid("companyId must be a UUID"),
   name: z.string().trim().min(1, "name is required").max(200),
-  /** Founder-provided context when the company is not in Cala. */
-  manualCompany: manualCompanySchema.optional(),
   /** Optional Langfuse session id; the API makes one when missing */
   sessionId: z
     .string()

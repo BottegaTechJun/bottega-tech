@@ -61,13 +61,6 @@ export function ConfirmStep({ company, confirm, back }: Props) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="mb-1 max-w-2xl">
-        <p className="label">Step 2 · Review</p>
-        <p className="mt-2 text-sm leading-relaxed text-dim">
-          This is the public company profile we’ll use to shape your investor path. Check it before
-          continuing.
-        </p>
-      </div>
       <header className="flex flex-wrap items-center gap-4 pb-3">
         <Logo name={profile.name} website={profile.website?.value ?? company.website} size="lg" />
         <div className="min-w-0 flex-1">
@@ -101,7 +94,7 @@ export function ConfirmStep({ company, confirm, back }: Props) {
             )}
           </div>
           {profile.rounds.length === 0 ? (
-            <p className="mt-6 text-sm text-faint">No rounds found yet.</p>
+            <p className="mt-6 text-sm text-faint">No rounds recorded in Cala.</p>
           ) : (
             <ol className="mt-4 flex flex-col gap-2">
               {profile.rounds.map((round) => (
@@ -159,7 +152,7 @@ export function ConfirmStep({ company, confirm, back }: Props) {
         <section className="card animate-rise p-5 md:col-span-2 [animation-delay:120ms]">
           <h3 className="label">Current investors</h3>
           {profile.investors.length === 0 ? (
-            <p className="mt-6 text-sm text-faint">No investors found yet.</p>
+            <p className="mt-6 text-sm text-faint">No investors recorded in Cala.</p>
           ) : (
             <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {profile.investors.map((investor) => (
@@ -190,7 +183,7 @@ export function ConfirmStep({ company, confirm, back }: Props) {
         <section className="card animate-rise p-5 [animation-delay:180ms]">
           <h3 className="label">Team</h3>
           {profile.people.length === 0 ? (
-            <p className="mt-6 text-sm text-faint">No team details found yet.</p>
+            <p className="mt-6 text-sm text-faint">No founders recorded in Cala.</p>
           ) : (
             <ul className="mt-4 flex flex-col gap-3">
               {profile.people.map((person) => (
@@ -214,10 +207,10 @@ export function ConfirmStep({ company, confirm, back }: Props) {
 
       <footer className="flex items-center justify-end gap-2 pt-3">
         <button type="button" className="btn-ghost" onClick={back}>
-          Choose another company
+          Not my company
         </button>
         <button type="button" className="btn-primary" onClick={() => confirm(profile)}>
-          Use this company
+          Looks right
           <ArrowRight className="size-4" />
         </button>
       </footer>
