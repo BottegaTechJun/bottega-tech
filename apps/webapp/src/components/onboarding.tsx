@@ -3,7 +3,6 @@
 import { ChevronLeft, RotateCcw } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { announce, api } from "@/lib/api";
 import { questions, suggest } from "@/lib/prefs";
 import { fresh, type Progress, useProgress } from "@/lib/store";
 import { ConfirmStep } from "./confirm-step";
@@ -76,21 +75,12 @@ export function Onboarding() {
     </div>
   );
 
-  /** Done: save the profile (update it when this company already has one), then open its canvas. */
+  /** Keep onboarding as a local draft; an owned search is created when matching starts. */
   const save = async () => {
-    const { company, prefs, profileId } = latest.current;
+    const { company } = latest.current;
     setState((s) => ({ ...s, prefsDone: true }));
     if (!company) return home();
-    const facts = await api.profile(company.id).catch(() => null);
-    const input = { company, facts, prefs };
-    const saved = await api
-      .save(input, profileId)
-      .catch(() => (profileId ? api.save(input) : null))
-      .catch(() => null);
-    if (!saved) return home();
-    setState((s) => ({ ...s, profileId: saved.id }));
-    announce();
-    router.push(`/warm-paths?profile=${saved.id}&run=1`);
+    router.push("/warm-paths?run=1");
   };
 
   const first = questions.findIndex((q) => state.prefs[q.id].length === 0);
@@ -169,7 +159,6 @@ export function Onboarding() {
             {view === "home" && complete && state.company && (
               <Dashboard
                 company={state.company}
-                profileId={state.profileId}
                 prefs={state.prefs}
                 open={(step) => go(step === "done" ? "home" : step)}
                 reset={() => setState(fresh)}

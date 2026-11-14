@@ -11,12 +11,11 @@ import { healthRoutes } from "./modules/health/health.routes";
 import { createCalaTools } from "./modules/matchup/matchup.agent";
 import { createMatchupRoutes } from "./modules/matchup/matchup.routes";
 import { createMatchupService } from "./modules/matchup/matchup.service";
-import { createDatabaseRunStore, createFileRunStore } from "./modules/matchup/matchup.store";
 import demo from "./modules/onboarding/fixtures/demo.json";
 import { createOnboardingRoutes } from "./modules/onboarding/onboarding.routes";
 import { createOnboardingService } from "./modules/onboarding/onboarding.service";
-import { createProfileRoutes } from "./modules/profiles/profiles.routes";
-import { createProfileService } from "./modules/profiles/profiles.service";
+import { createSearchRoutes } from "./modules/searches/searches.routes";
+import { createSearchSessionStore } from "./modules/searches/searches.service";
 
 /** Shared Aiven Postgres client (auto-migrates schema when DATABASE_URL is configured). */
 const db = createDatabase(env.DATABASE_URL);
@@ -33,8 +32,8 @@ const cala = createCalaClient({
 const onboarding = createOnboardingService(cala, { snapshot: demo, db });
 const brands = createBrandsService(cala);
 
-// Saved profiles and their runs (Aiven Postgres when DATABASE_URL is set, else apps/api/data/profiles).
-const profiles = createProfileService({ dir: `${import.meta.dir}/../data/profiles`, db });
+// Saved investor searches are owned by the authenticated user.
+const searches = createSearchSessionStore(db);
 
 // Langfuse first, so the agent's spans have somewhere to go.
 const telemetry = startTelemetry({
@@ -44,9 +43,6 @@ const telemetry = startTelemetry({
   projectId: env.LANGFUSE_PROJECT_ID,
 });
 
-const fileStore = createFileRunStore(`${import.meta.dir}/../.runs`);
-const runStore = createDatabaseRunStore(db, fileStore);
-
 const matchup = env.GEMINI_API_KEY
   ? createMatchupService({
       model: createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY })(env.MATCHUP_MODEL),
@@ -55,9 +51,7 @@ const matchup = env.GEMINI_API_KEY
       maxSteps: env.MATCHUP_MAX_STEPS,
       sessionUrl: telemetry.sessionUrl,
       after: telemetry.flush,
-      // Last run per company, saved to Aiven Postgres + local .runs fallback.
-      store: runStore,
-      profiles,
+      sessions: searches,
     })
   : null;
 
@@ -72,8 +66,8 @@ const server = Bun.serve({
     {
       ...healthRoutes,
       ...createOnboardingRoutes(onboarding),
-      ...createMatchupRoutes(matchup),
-      ...createProfileRoutes(profiles),
+      ...createMatchupRoutes(matchup, env.INTERNAL_API_SECRET),
+      ...createSearchRoutes(searches, env.INTERNAL_API_SECRET),
       ...createBrandsRoutes(brands),
     },
     middleware,

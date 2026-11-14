@@ -1,9 +1,18 @@
-import type { Cite, Connection, Entity, Fact, MatchupGraph, Role } from "@repo/shared";
+import type {
+  Cite,
+  Connection,
+  Entity,
+  Fact,
+  MatchupEvent,
+  MatchupGraph,
+  Role,
+} from "@repo/shared";
 import { cites, repair } from "../onboarding/onboarding.service";
 import {
   type AgentAnswer,
   rawEntitySchema,
   rawLinkSchema,
+  rawOriginSchema,
   rawRetrievalSchema,
 } from "./matchup.schemas";
 
@@ -72,6 +81,14 @@ export function harvest(output: unknown): Harvest {
           entities.set(id, { id, name: repair(name), type, role: roleOf(type) });
       }
       if (typeof node.document === "string" && node.document.startsWith("http")) raw.push(node);
+      // knowledge_search sources: a citable URL but no date. Named by domain like every other
+      // source; their own names are page titles.
+      if (Array.isArray(node.origins)) {
+        for (const origin of node.origins) {
+          const source = rawOriginSchema.safeParse(origin);
+          if (source.success) raw.push({ document: source.data.document.url });
+        }
+      }
 
       const retrieval = rawRetrievalSchema.safeParse(node);
       if (!retrieval.success) return;
@@ -108,6 +125,31 @@ export function harvest(output: unknown): Harvest {
   return { entities: [...entities.values()], facts, cites: cites(raw) };
 }
 
+/**
+ * What a saved run learned from Cala, read back from its events: tool results, the context a
+ * follow-up inherited, and the final graph with its evidence. Seeds a follow-up's ledger.
+ */
+export function replay(events: MatchupEvent[]): Harvest {
+  const entities: Entity[] = [];
+  const facts: Fact[] = [];
+  const found: Cite[] = [];
+  for (const event of events) {
+    if (event.type === "tool-result" || event.type === "follow-up") {
+      entities.push(...event.entities);
+      facts.push(...event.facts);
+    } else if (event.type === "done") {
+      // Last, so the answer's investor roles win over what the tool results said.
+      entities.push(...event.graph.entities);
+      for (const pick of event.graph.investors) found.push(...pick.evidence);
+      for (const link of event.graph.connections) {
+        facts.push(...link.facts);
+        found.push(...link.evidence);
+      }
+    }
+  }
+  return { entities, facts, cites: found };
+}
+
 /** Everything learned during one run, merged across tool results. */
 export function createLedger() {
   const entities = new Map<string, Entity>();
@@ -140,8 +182,34 @@ function normalizeUrl(url: string): string {
 }
 
 /**
+ * When a relation was first reported: its earliest dated source. Later dates are often
+ * re-crawls of a portfolio page, so the earliest one is closest to the announcement.
+ */
+export function dealDate(fact: Fact): string | null {
+  return fact.sources.reduce<string | null>(
+    (min, source) => (source.date && (!min || source.date < min) ? source.date : min),
+    null,
+  );
+}
+
+/** Sourced Cala records of what an investor backed, newest first. Backs a pick the agent left unsourced. */
+export function backing(facts: Fact[], id: string, limit = 5): Cite[] {
+  const byUrl = new Map<string, Cite>();
+  for (const fact of facts) {
+    const invested = fact.role === "INVESTOR" || fact.relation === "INVESTED_IN";
+    if (fact.from !== id || !invested) continue;
+    for (const cite of fact.sources)
+      if (cite.url && !byUrl.has(cite.url)) byUrl.set(cite.url, cite);
+  }
+  return [...byUrl.values()]
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""))
+    .slice(0, limit);
+}
+
+/**
  * Turns the agent's answer into a graph that only holds what Cala returned:
- * unknown ids, unseen URLs and connections without evidence are dropped.
+ * unknown ids, unseen URLs, investors without a source and connections without evidence
+ * are dropped.
  */
 export function ground(
   answer: AgentAnswer,
@@ -153,8 +221,28 @@ export function ground(
   const byUrl = new Map([...ledger.sources.values()].map((c) => [normalizeUrl(c.url ?? ""), c]));
   const facts = [...ledger.facts.values()];
 
-  const investors = answer.investors.filter((pick) => known(pick.id));
-  dropped += answer.investors.length - investors.length;
+  // A pick needs a known id and a source: the ones the agent cited that the run returned,
+  // or, when it cited none, the sourced records of what the investor backed.
+  const investors: MatchupGraph["investors"] = [];
+  for (const pick of answer.investors) {
+    if (investors.some((kept) => kept.id === pick.id)) continue;
+    if (!known(pick.id)) {
+      dropped++;
+      continue;
+    }
+    const cited = new Map<string, Cite>();
+    for (const url of pick.evidence) {
+      const cite = byUrl.get(normalizeUrl(url));
+      if (cite?.url) cited.set(cite.url, cite);
+      else dropped++;
+    }
+    const evidence = cited.size ? [...cited.values()] : backing(facts, pick.id);
+    if (!evidence.length) {
+      dropped++;
+      continue;
+    }
+    investors.push({ id: pick.id, why: pick.why, evidence });
+  }
 
   const connections: Connection[] = [];
   answer.connections.forEach((link, index) => {
@@ -209,5 +297,79 @@ export function ground(
     investors,
     connections,
     dropped,
+  };
+}
+
+/**
+ * Keeps the useful part of a run when the agent stops before submitting its answer.
+ * These are candidates backed by sourced Cala facts, not a finalized recommendation.
+ */
+export function partialGraph(
+  ledger: Ledger,
+  meta: { sessionId: string; companyId: string; companyName: string },
+): MatchupGraph {
+  const facts = [...ledger.facts.values()];
+  const candidates = new Map<string, { facts: number; evidence: Cite[] }>();
+
+  for (const fact of facts) {
+    const investing = fact.role?.toUpperCase() === "INVESTOR" || fact.relation === "INVESTED_IN";
+    if (!investing || fact.from === meta.companyId || !ledger.entities.has(fact.from)) continue;
+    const existing = candidates.get(fact.from) ?? { facts: 0, evidence: [] };
+    existing.facts += 1;
+    const urls = new Set(existing.evidence.map((cite) => cite.url ?? cite.name));
+    for (const cite of fact.sources) {
+      const key = cite.url ?? cite.name;
+      if (!urls.has(key)) {
+        existing.evidence.push(cite);
+        urls.add(key);
+      }
+    }
+    candidates.set(fact.from, existing);
+  }
+
+  const investors = [...candidates.entries()]
+    .map(([id, candidate]) => ({
+      id,
+      candidate,
+      entity: ledger.entities.get(id),
+    }))
+    .filter((item): item is typeof item & { entity: Entity } =>
+      Boolean(item.entity && item.candidate.evidence.length),
+    )
+    .sort((a, b) => b.candidate.facts - a.candidate.facts)
+    .slice(0, 5)
+    .map(({ id, candidate }) => ({
+      id,
+      why: "Found in sourced funding records explored before the search stopped.",
+      evidence: candidate.evidence.slice(0, 4),
+    }));
+
+  const company =
+    ledger.entities.get(meta.companyId) ??
+    ({
+      id: meta.companyId,
+      name: meta.companyName,
+      type: "Company",
+      role: "company",
+    } satisfies Entity);
+  const entityIds = new Set([meta.companyId, ...investors.map((investor) => investor.id)]);
+  const entities = [
+    company,
+    ...investors.flatMap((investor) => {
+      const entity = ledger.entities.get(investor.id);
+      return entity ? [{ ...entity, role: "investor" as const }] : [];
+    }),
+  ];
+
+  return {
+    sessionId: meta.sessionId,
+    companyId: meta.companyId,
+    summary: investors.length
+      ? "This search stopped before the full match was finalized. These candidates were found in the sourced records explored so far."
+      : "This search stopped before the agent found a sourced investor match. Run it again to continue the search.",
+    entities: entities.filter((entity) => entityIds.has(entity.id)),
+    investors,
+    connections: [],
+    dropped: 0,
   };
 }

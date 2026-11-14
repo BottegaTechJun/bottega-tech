@@ -1,6 +1,6 @@
 "use client";
 
-import type { ProfileSummary } from "@repo/shared";
+import type { SearchSessionSummary } from "@repo/shared";
 import { X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -9,15 +9,15 @@ import { summary } from "@/lib/prefs";
 import { useProgress } from "@/lib/store";
 import { Logo } from "./logo";
 
-/** Saved profiles in the sidebar. Picking one opens its canvas and makes it the current one. */
+/** User-owned investor searches in the sidebar. */
 export function Profiles({ active }: { active?: string | null }) {
   const { setState } = useProgress();
-  const [list, setList] = useState<ProfileSummary[] | null>(null);
+  const [list, setList] = useState<SearchSessionSummary[] | null>(null);
   const [sure, setSure] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api
-      .profiles()
+      .searches()
       .then(setList)
       .catch(() => setList([]));
   }, []);
@@ -28,19 +28,17 @@ export function Profiles({ active }: { active?: string | null }) {
     return () => window.removeEventListener(PROFILES_CHANGED, load);
   }, [load]);
 
-  const pick = (p: ProfileSummary) =>
+  const pick = (p: SearchSessionSummary) =>
     setState({
-      company: p.company,
-      prefs: p.prefs,
+      company: p.input.company,
+      prefs: p.input.prefs,
       confirmed: true,
       prefsDone: true,
-      profileId: p.id,
     });
 
   const remove = async (id: string) => {
     setSure(null);
-    await api.remove(id).catch(() => undefined);
-    setState((s) => (s.profileId === id ? { ...s, profileId: null } : s));
+    await api.removeSearch(id).catch(() => undefined);
     announce();
   };
 
@@ -48,20 +46,22 @@ export function Profiles({ active }: { active?: string | null }) {
 
   return (
     <div className="mt-6 flex min-h-0 flex-col">
-      <p className="px-2.5 pb-1.5 text-xs text-faint">Profiles</p>
+      <p className="px-2.5 pb-1.5 text-xs text-faint">Searches</p>
       <ul className="flex min-h-0 flex-col gap-0.5 overflow-y-auto">
         {list.map((p) => (
           <li key={p.id} className="group relative">
             <Link
-              href={`/warm-paths?profile=${p.id}`}
+              href={`/warm-paths?session=${p.id}`}
               onClick={() => pick(p)}
               aria-current={active === p.id ? "page" : undefined}
               className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 pr-8 transition hover:bg-raise aria-[current=page]:bg-raise"
             >
-              <Logo name={p.company.name} website={p.company.website} size="xs" />
+              <Logo name={p.input.company.name} website={p.input.company.website} size="xs" />
               <span className="min-w-0">
-                <span className="block truncate text-sm">{p.company.name}</span>
-                <span className="block truncate text-xs text-faint">{summary(p.prefs)}</span>
+                <span className="block truncate text-sm">{p.input.company.name}</span>
+                <span className="block truncate text-xs text-faint">
+                  {summary(p.input.prefs)} · {sessionResult(p)}
+                </span>
               </span>
             </Link>
             {sure === p.id ? (
@@ -76,7 +76,7 @@ export function Profiles({ active }: { active?: string | null }) {
             ) : (
               <button
                 type="button"
-                aria-label={`Delete ${p.company.name}`}
+                aria-label={`Delete ${p.input.company.name}`}
                 onClick={() => setSure(p.id)}
                 className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-faint opacity-0 transition group-hover:opacity-100 hover:text-text focus:opacity-100"
               >
@@ -88,4 +88,10 @@ export function Profiles({ active }: { active?: string | null }) {
       </ul>
     </div>
   );
+}
+
+function sessionResult(session: SearchSessionSummary): string {
+  if (session.status === "running") return "in progress";
+  if (session.status === "incomplete") return "partial result";
+  return `${session.picks} ${session.picks === 1 ? "investor" : "investors"}`;
 }

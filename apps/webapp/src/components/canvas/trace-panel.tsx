@@ -4,6 +4,7 @@ import {
   ArrowUpRight,
   Braces,
   CircleAlert,
+  CornerDownRight,
   FileSearch,
   LoaderCircle,
   MessageSquareText,
@@ -65,6 +66,8 @@ function firstSentence(text: string): string {
 }
 
 function headline(items: TraceItem[]): string {
+  const context = items.find((i) => i.kind === "context");
+  if (context?.kind === "context") return `Follow-up: “${context.question}”`;
   const thought = items.find((i): i is Thought => i.kind === "thinking");
   if (thought) {
     const { title, body } = split(thought.text);
@@ -162,6 +165,20 @@ function Line({ item }: { item: TraceItem }) {
           <CircleAlert className="text-red-300" />
         </TraceIcon>
         <TraceTitle>{item.message}</TraceTitle>
+      </TraceLine>
+    );
+  }
+
+  if (item.kind === "context") {
+    return (
+      <TraceLine>
+        <TraceIcon>
+          <CornerDownRight />
+        </TraceIcon>
+        <TraceTitle>Built on the previous answer</TraceTitle>
+        <TraceDescription>
+          {item.entities} entities, {item.facts} relations
+        </TraceDescription>
       </TraceLine>
     );
   }

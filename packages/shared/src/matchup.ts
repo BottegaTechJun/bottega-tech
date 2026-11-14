@@ -1,21 +1,44 @@
 import { z } from "zod";
 import { citeSchema } from "./onboarding";
+import { profileInputSchema } from "./profiles";
 
 /** Contracts for the investor matchup agent (apps/webapp ↔ apps/api). */
 
 // ---------- Request ----------
 
-export const matchupRequestSchema = z.object({
-  companyId: z.uuid("companyId must be a UUID"),
-  name: z.string().trim().min(1, "name is required").max(200),
-  /** Saved profile to run for: its company and preferences shape the search, the run is kept under it */
-  profileId: z.uuid("profileId must be a UUID").optional(),
-  /** Optional Langfuse session id; the API makes one when missing */
-  sessionId: z
+const slug = (field: string) =>
+  z
     .string()
-    .regex(/^[\w.-]{1,100}$/, "sessionId may only hold letters, digits, dot, dash, underscore")
-    .optional(),
+    .regex(/^[\w.-]{1,100}$/, `${field} may only hold letters, digits, dot, dash, underscore`);
+
+/** A question on top of a finished profile run; the agent revises that run's answer. */
+export const followUpSchema = z.object({
+  question: z
+    .string()
+    .trim()
+    .min(3, "question is too short")
+    .max(300, "question is too long (300 characters max)"),
+  /** The profile run to build on; the newest finished run when missing */
+  parent: slug("parent").optional(),
 });
+export type FollowUp = z.infer<typeof followUpSchema>;
+
+export const matchupRequestSchema = z
+  .object({
+    companyId: z.uuid("companyId must be a UUID"),
+    name: z.string().trim().min(1, "name is required").max(200),
+    /** Saved profile to run for: its company and preferences shape the search, the run is kept under it */
+    profileId: z.uuid("profileId must be a UUID").optional(),
+    /** Founder context sent with a search; persisted as part of the user-owned search session. */
+    profile: profileInputSchema.optional(),
+    /** Optional Langfuse session id; the API makes one when missing */
+    sessionId: slug("sessionId").optional(),
+    followUp: followUpSchema.optional(),
+  })
+  .refine((req) => !req.followUp || req.profileId || req.profile, {
+    path: ["followUp"],
+    message: "Follow-ups need a profile or profileId",
+  });
 export type MatchupRequest = z.infer<typeof matchupRequestSchema>;
 
 // ---------- Graph ----------
@@ -73,6 +96,11 @@ export type Connection = z.infer<typeof connectionSchema>;
 export const pickSchema = z.object({
   id: z.string(),
   why: z.string(),
+  /**
+   * Sources behind the pick, all from the run's tool results: the ones the agent cited, or the
+   * sourced records of what the investor backed. Empty only in runs saved before picks had them.
+   */
+  evidence: z.array(citeSchema).default([]),
 });
 export type Pick = z.infer<typeof pickSchema>;
 
@@ -106,6 +134,14 @@ export const matchupEventSchema = z.discriminatedUnion("type", [
     tool: z.string(),
     summary: z.string(),
     ok: z.boolean(),
+    entities: z.array(entitySchema),
+    facts: z.array(factSchema),
+  }),
+  /** A follow-up run starts from its parent: the question and what the parent saw in Cala */
+  z.object({
+    type: z.literal("follow-up"),
+    question: z.string(),
+    parent: z.string(),
     entities: z.array(entitySchema),
     facts: z.array(factSchema),
   }),

@@ -10,7 +10,8 @@ export type ErrorCode =
   | "upstream_unreachable"
   | "upstream_invalid_response"
   | "upstream_error"
-  | "internal_error";
+  | "internal_error"
+  | "unauthorized";
 
 /** An error that maps to a JSON response: `{ error: { code, message } }`. */
 export class HttpError extends Error {

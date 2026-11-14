@@ -3,24 +3,17 @@ import {
   brandsResponseSchema,
   type CompanyMatches,
   companyMatchesSchema,
-  type FounderPreferencesState,
-  founderPreferencesStateSchema,
-  type MatchupReplay,
-  matchupReplaySchema,
   type Profile,
-  type ProfileInput,
-  type ProfileSummary,
-  profileListSchema,
   profileSchema,
-  type RunSummary,
-  runListSchema,
-  type SavedProfile,
-  savedProfileSchema,
-  type UpsertFounderPreferences,
+  type SearchSession,
+  type SearchSessionSummary,
+  searchSessionListSchema,
+  searchSessionSchema,
 } from "@repo/shared";
 import { z } from "zod";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const PRIVATE_API_URL = "/api/backend";
 const TIMEOUT = 30_000;
 
 /** Any failure talking to our API: network, an error response, or an unexpected body. */
@@ -38,17 +31,18 @@ interface Options {
   signal?: AbortSignal;
   method?: "POST" | "PUT" | "DELETE";
   body?: unknown;
+  baseUrl?: string;
 }
 
 async function request<Schema extends z.ZodType>(
   schema: Schema,
   path: string,
-  { signal, method, body: payload }: Options = {},
+  { signal, method, body: payload, baseUrl = API_URL }: Options = {},
 ): Promise<z.infer<Schema>> {
   const timeout = AbortSignal.timeout(TIMEOUT);
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${baseUrl}${path}`, {
       method,
       headers: payload ? { "Content-Type": "application/json" } : undefined,
       body: payload ? JSON.stringify(payload) : undefined,
@@ -78,6 +72,22 @@ async function request<Schema extends z.ZodType>(
 const profiles = new Map<string, Promise<Profile>>();
 
 export const api = {
+  searches: async (): Promise<SearchSessionSummary[]> =>
+    (await request(searchSessionListSchema, "/search-sessions", { baseUrl: PRIVATE_API_URL }))
+      .sessions,
+
+  search: (id: string): Promise<SearchSession> =>
+    request(searchSessionSchema, `/search-sessions/${encodeURIComponent(id)}`, {
+      baseUrl: PRIVATE_API_URL,
+    }),
+
+  removeSearch: async (id: string): Promise<void> => {
+    await request(z.unknown(), `/search-sessions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      baseUrl: PRIVATE_API_URL,
+    });
+  },
+
   /** Websites Cala knows for these entity ids, for logos. */
   brands: async (ids: string[], signal?: AbortSignal): Promise<Record<string, string>> =>
     (
@@ -101,47 +111,6 @@ export const api = {
     profiles.set(id, next);
     next.catch(() => profiles.delete(id));
     return next;
-  },
-
-  profiles: async (): Promise<ProfileSummary[]> =>
-    (await request(profileListSchema, "/api/profiles")).profiles,
-
-  saved: (id: string): Promise<SavedProfile> =>
-    request(savedProfileSchema, `/api/profiles/${encodeURIComponent(id)}`),
-
-  /** Creates a profile, or updates it when `id` is given. */
-  save: (input: ProfileInput, id?: string | null): Promise<SavedProfile> =>
-    request(savedProfileSchema, id ? `/api/profiles/${encodeURIComponent(id)}` : "/api/profiles", {
-      method: id ? "PUT" : "POST",
-      body: input,
-    }),
-
-  remove: async (id: string): Promise<void> => {
-    await request(z.unknown(), `/api/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
-  },
-
-  runs: async (id: string): Promise<RunSummary[]> =>
-    (await request(runListSchema, `/api/profiles/${encodeURIComponent(id)}/runs`)).runs,
-
-  run: (id: string, run: string): Promise<MatchupReplay> =>
-    request(
-      matchupReplaySchema,
-      `/api/profiles/${encodeURIComponent(id)}/runs/${encodeURIComponent(run)}`,
-    ),
-
-  getPreferences(id: string): Promise<FounderPreferencesState> {
-    return request(
-      founderPreferencesStateSchema,
-      `/api/onboarding/companies/${encodeURIComponent(id)}/preferences`,
-    );
-  },
-
-  savePreferences(id: string, payload: UpsertFounderPreferences): Promise<FounderPreferencesState> {
-    return request(
-      founderPreferencesStateSchema,
-      `/api/onboarding/companies/${encodeURIComponent(id)}/preferences`,
-      { method: "PUT", body: payload },
-    );
   },
 };
 

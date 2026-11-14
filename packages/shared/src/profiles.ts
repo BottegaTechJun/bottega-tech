@@ -64,6 +64,10 @@ export const runSummarySchema = z.object({
   savedAt: z.string(),
   complete: z.boolean(),
   picks: z.number().int().nonnegative(),
+  /** The follow-up question when this run revised another one */
+  question: z.string().nullable(),
+  /** The run it revised */
+  parent: z.string().nullable(),
 });
 export type RunSummary = z.infer<typeof runSummarySchema>;
 

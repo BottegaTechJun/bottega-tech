@@ -1,5 +1,6 @@
 import { BookOpen, Network, Rocket } from "lucide-react";
 import Link from "next/link";
+import { BottegaMark } from "./bottega-mark";
 import { Profiles } from "./profiles";
 import { UserMenu } from "./user-menu";
 
@@ -25,9 +26,7 @@ export function Shell({ active, profile, company, aside, children }: Props) {
     <div className="flex min-h-[100dvh]">
       <aside className="sticky top-0 hidden h-[100dvh] w-60 shrink-0 flex-col px-3 py-4 md:flex">
         <Link href="/" className="flex items-center gap-2.5 px-2.5 pb-6">
-          <span className="grid size-7 place-items-center rounded-lg bg-text font-mono text-sm font-semibold text-ink">
-            B
-          </span>
+          <BottegaMark className="size-7 shrink-0" />
           <span className="text-[15px] font-semibold tracking-tight">Bottega</span>
         </Link>
 
@@ -65,9 +64,7 @@ export function Shell({ active, profile, company, aside, children }: Props) {
       <main className="min-w-0 flex-1 md:py-2 md:pr-2">
         <nav className="sticky top-0 z-20 flex h-14 items-center gap-1 border-b border-line bg-ink/90 px-4 backdrop-blur md:hidden">
           <Link href="/" aria-label="Bottega" className="mr-2">
-            <span className="grid size-7 place-items-center rounded-lg bg-text font-mono text-sm font-semibold text-ink">
-              B
-            </span>
+            <BottegaMark className="size-7" />
           </Link>
           {items.map(({ id, href, label }) => (
             <Link

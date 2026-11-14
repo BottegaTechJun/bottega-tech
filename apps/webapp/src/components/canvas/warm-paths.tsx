@@ -1,6 +1,6 @@
 "use client";
 
-import type { CompanyMatch, Entity, RunSummary, SavedProfile } from "@repo/shared";
+import type { CompanyMatch, Entity, SearchSessionInput, SearchSessionSummary } from "@repo/shared";
 import { ReactFlowProvider } from "@xyflow/react";
 import {
   ArrowLeft,
@@ -13,11 +13,14 @@ import {
   Square,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { signIn, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
-import { idle, lastMatchup, type Run, reduce, settle, streamMatchup } from "@/lib/matchup";
+import { idle, type Run, reduce, settle, streamMatchup } from "@/lib/matchup";
 import { useProgress } from "@/lib/store";
+import { suggestions } from "@/lib/suggest";
+import { Ask, Asked } from "./ask";
 import { Board, type Selection } from "./board";
 import { domains as brands } from "./brand";
 import { DetailPanel } from "./detail-panel";
@@ -30,27 +33,36 @@ import { SessionLink, TraceList } from "./trace-panel";
 import { Wants } from "./wants";
 
 /** Demo company from docs/CONTEXT.md §2, used when onboarding has not picked one. */
-const DEMO: Pick<CompanyMatch, "id" | "name" | "website"> = {
+const DEMO: CompanyMatch = {
   id: "6ebd9536-fcc5-5921-8938-ce3497eb6262",
   name: "In Parallel",
+  description: null,
+  hq: null,
   website: "in-parallel.com",
 };
 
 const small = "h-8 px-3.5 text-[13px]";
 
+/** Keep refreshes on the saved session without retriggering the App Router loader. */
+function rememberSession(id: string): void {
+  const search = new URLSearchParams(window.location.search);
+  search.delete("run");
+  search.set("session", id);
+  window.history.replaceState(window.history.state, "", `/warm-paths?${search.toString()}`);
+}
+
 export function WarmPaths() {
-  const { state, setState, ready } = useProgress();
+  const { data: authSession, status: authStatus } = useSession();
+  const { state, ready } = useProgress();
   const params = useSearchParams();
-  const asked = params.get("profile");
+  const asked = params.get("session");
   const auto = useRef(params.get("run") === "1");
-  const profileId = ready ? (asked ?? state.profileId) : null;
-  const [saved, setSaved] = useState<SavedProfile | null>(null);
+  const sessionId = ready ? asked : null;
+  const [context, setContext] = useState<SearchSessionInput | null>(null);
   const [missing, setMissing] = useState(false);
-  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [runs, setRuns] = useState<SearchSessionSummary[]>([]);
   const [shown, setShown] = useState<string | null>(null);
-  const company = saved?.company ?? (profileId ? null : state.company) ?? DEMO;
-  // Without a profile the canvas follows the onboarding company.
-  const legacy = profileId ? null : company.id;
+  const company = context?.company ?? state.company ?? DEMO;
   const [run, dispatch] = useReducer(
     (
       current: Run,
@@ -69,115 +81,136 @@ export function WarmPaths() {
   const [view, setView] = useState<"list" | "graph">("list");
   const abort = useRef<AbortController | null>(null);
 
-  const start = useCallback(async () => {
-    abort.current?.abort();
-    const controller = new AbortController();
-    abort.current = controller;
-    const sessionId = `warmup-${crypto.randomUUID()}`;
-    setSelection(null);
-    setExplored(false);
-    setPanel(true);
-    dispatch({ type: "begin", sessionId });
-    try {
-      await streamMatchup(
-        {
-          companyId: company.id,
-          name: company.name,
-          sessionId,
-          ...(saved ? { profileId: saved.id } : {}),
-        },
-        (event) => dispatch({ type: "event", event }),
-        controller.signal,
-      );
-      dispatch({ type: "settle" });
-      if (saved) {
-        const next = await api.runs(saved.id).catch(() => null);
-        if (next) {
+  /** Runs the agent; with a question, as a follow-up on the run on screen. */
+  const start = useCallback(
+    async (question?: string) => {
+      if (authStatus !== "authenticated" || !authSession?.user) {
+        void signIn("google");
+        return;
+      }
+      abort.current?.abort();
+      const controller = new AbortController();
+      abort.current = controller;
+      const sessionId = crypto.randomUUID();
+      const followUp = question && shown ? { question, parent: shown } : null;
+      setSelection(null);
+      setExplored(false);
+      setPanel(true);
+      // The live run has no saved id until it ends.
+      setShown(null);
+      dispatch({
+        type: "begin",
+        sessionId,
+        ...(followUp?.parent
+          ? { followUp: { question: followUp.question, parent: followUp.parent } }
+          : {}),
+      });
+      try {
+        const facts = context?.facts ?? (await api.profile(company.id).catch(() => null));
+        const input = { company, facts, prefs: context?.prefs ?? state.prefs };
+        setContext(input);
+        await streamMatchup(
+          {
+            companyId: company.id,
+            name: company.name,
+            sessionId,
+            profile: input,
+            ...(followUp ? { followUp } : {}),
+          },
+          (event) => dispatch({ type: "event", event }),
+          controller.signal,
+        );
+        dispatch({ type: "settle" });
+        const next = await api.searches().catch(() => null);
+        // Another run or a history pick may have taken over while this one was saving.
+        if (next && abort.current === controller) {
           setRuns(next);
-          setShown(next[0]?.id ?? null);
+          const saved = next.find((r) => r.id === sessionId);
+          if (saved) {
+            setShown(saved.id);
+            rememberSession(saved.id);
+          }
+        }
+      } catch (err) {
+        const stopped = controller.signal.aborted;
+        dispatch({
+          type: "fail",
+          message: stopped
+            ? "Stopped. Results so far are kept."
+            : err instanceof Error
+              ? err.message
+              : "Lookup failed",
+        });
+        const next = await api.searches().catch(() => null);
+        if (next && abort.current === controller) {
+          setRuns(next);
+          const saved = next.find((r) => r.id === sessionId);
+          if (saved) {
+            setShown(saved.id);
+            rememberSession(saved.id);
+          }
         }
       }
-    } catch (err) {
-      const stopped = controller.signal.aborted;
-      dispatch({
-        type: "fail",
-        message: stopped
-          ? "Stopped. Results so far are kept."
-          : err instanceof Error
-            ? err.message
-            : "Lookup failed",
-      });
-    }
-  }, [company.id, company.name, saved]);
+    },
+    [authSession?.user, authStatus, company, context, shown, state.prefs],
+  );
 
   useEffect(() => () => abort.current?.abort(), []);
 
-  // A profile opens on its latest finished run; the agent only runs when asked.
+  // A search session opens on its saved replay; the agent only runs when asked.
   useEffect(() => {
     if (!ready) return;
     let live = true;
     abort.current?.abort();
     dispatch({ type: "reset" });
-    setSaved(null);
+    setContext(null);
     setMissing(false);
     setRuns([]);
     setShown(null);
-    if (!profileId) {
-      if (!legacy) return;
-      lastMatchup(legacy).then((last) => {
-        if (live && last) dispatch({ type: "replay", saved: last });
-      });
+    if (!sessionId) {
       return () => {
         live = false;
       };
     }
     (async () => {
-      const profile = await api.saved(profileId).catch(() => null);
+      const session = await api.search(sessionId).catch(() => null);
       if (!live) return;
-      if (!profile) {
-        if (!asked) {
-          setState((s) => (s.profileId === profileId ? { ...s, profileId: null } : s));
-        } else {
-          setMissing(true);
-        }
+      if (!session) {
+        setMissing(true);
         return;
       }
-      setSaved(profile);
-      if (auto.current) return;
-      const list = await api.runs(profile.id).catch(() => []);
+      setContext(session.input);
+      setShown(session.id);
+      const list = await api.searches().catch(() => []);
       if (!live) return;
       setRuns(list);
-      const pick = list.find((r) => r.complete) ?? list[0];
-      if (!pick) return;
-      setShown(pick.id);
-      const replay = await api.run(profile.id, pick.id).catch(() => null);
-      if (live && replay) dispatch({ type: "replay", saved: replay });
+      dispatch({ type: "replay", saved: session.replay });
     })();
     return () => {
       live = false;
     };
-  }, [ready, profileId, legacy, asked, setState]);
+  }, [ready, sessionId]);
 
   // Fresh from onboarding: start the agent without another click.
   useEffect(() => {
-    if (!auto.current || !saved) return;
+    if (!auto.current || !ready || sessionId || !company) return;
     auto.current = false;
-    window.history.replaceState(null, "", `/warm-paths?profile=${saved.id}`);
     void start();
-  }, [saved, start]);
+  }, [ready, sessionId, company, start]);
 
-  const open = useCallback(
-    async (runId: string) => {
-      if (!saved) return;
-      abort.current?.abort();
-      setShown(runId);
-      setSelection(null);
-      setExplored(false);
-      const replay = await api.run(saved.id, runId).catch(() => null);
-      if (replay) dispatch({ type: "replay", saved: replay });
-    },
-    [saved],
-  );
+  /** Shows a saved run. A run that can't be loaded leaves the screen as it is. */
+  const open = useCallback(async (runId: string) => {
+    const session = await api.search(runId).catch(() => null);
+    if (!session) return;
+    abort.current?.abort();
+    abort.current = null;
+    rememberSession(runId);
+    setShown(runId);
+    setContext(session.input);
+    setSelection(null);
+    setExplored(false);
+    dispatch({ type: "replay", saved: session.replay });
+  }, []);
 
   const select = useCallback((next: Selection) => {
     setSelection(next);
@@ -186,10 +219,28 @@ export function WarmPaths() {
 
   const running = run.status === "running";
   const graph = run.graph;
+  const revised = run.followUp;
+  // Every question asked on the way to this answer: its own, then its parents'.
+  const questions = useMemo(() => {
+    const byId = new Map(runs.map((r) => [r.id, r]));
+    const out = revised ? [revised.question] : [];
+    let parent = revised ? byId.get(revised.parent) : undefined;
+    while (parent?.question && out.length < 20) {
+      out.push(parent.question);
+      parent = parent.parentId ? byId.get(parent.parentId) : undefined;
+    }
+    return out;
+  }, [runs, revised]);
+  // Chips are checked against this answer's data, so they change with every run.
+  const prefs = context?.prefs ?? state.prefs;
+  const chips = useMemo(
+    () => (prefs ? suggestions(prefs, run, { asked: questions }) : []),
+    [prefs, run, questions],
+  );
   const [sites, setSites] = useState<Record<string, string>>({});
   const domains = useMemo(
-    () => brands(run, company, saved?.facts ?? null, sites),
-    [run, company, saved, sites],
+    () => brands(run, company, context?.facts ?? null, sites),
+    [run, company, context, sites],
   );
   // Logos for the answer's companies and investors come from Cala websites, not the agent.
   const wanted = (graph?.entities ?? [])
@@ -271,7 +322,7 @@ export function WarmPaths() {
           run={run}
           id={pick}
           company={company}
-          prefs={saved?.prefs ?? state.prefs}
+          prefs={context?.prefs ?? state.prefs}
           domains={domains}
           select={select}
           active={active}
@@ -301,7 +352,7 @@ export function WarmPaths() {
   );
 
   return (
-    <Shell active="paths" profile={saved?.id ?? null} aside={aside}>
+    <Shell active="paths" profile={shown} aside={aside}>
       <div className="flex h-[100dvh] flex-col md:h-[calc(100dvh-1rem)]">
         <header className="flex h-14 shrink-0 items-center gap-2 px-4">
           <span className="flex shrink-0 items-center gap-2 text-sm font-medium whitespace-nowrap">
@@ -334,8 +385,8 @@ export function WarmPaths() {
               <button
                 type="button"
                 className={`btn-primary ${small}`}
-                onClick={start}
-                disabled={!ready || (Boolean(profileId) && !saved)}
+                onClick={() => start()}
+                disabled={!ready || !company}
               >
                 {run.status === "idle" ? (
                   <Play className="size-3.5" />
@@ -363,11 +414,15 @@ export function WarmPaths() {
             company={{
               name: company.name,
               website: company.website,
-              hq: saved?.company.hq ?? state.company?.hq ?? null,
+              hq: context?.company.hq ?? state.company?.hq ?? null,
             }}
-            stage={saved?.facts?.stage?.value ?? null}
-            prefs={saved?.prefs ?? state.prefs}
+            stage={context?.facts?.stage?.value ?? null}
+            prefs={context?.prefs ?? state.prefs}
           />
+        )}
+
+        {revised && !missing && (
+          <Asked question={revised.question} back={() => void open(revised.parent)} />
         )}
 
         <div className="relative min-h-0 flex-1">
@@ -477,6 +532,10 @@ export function WarmPaths() {
             </div>
           )}
         </div>
+
+        {context && run.status !== "idle" && (
+          <Ask chips={chips} status={run.status} ask={(question) => void start(question)} />
+        )}
       </div>
     </Shell>
   );
@@ -491,13 +550,29 @@ function when(iso: string): string {
   });
 }
 
-/** Picker for a profile's older runs, newest first. */
+const short = (text: string, max = 36) =>
+  text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+
+/** "14 Nov, 18:20 · ↳ Only Nordic funds · 3 investors" */
+function runLabel(run: SearchSessionSummary): string {
+  const result =
+    run.status === "complete"
+      ? `${run.picks} ${run.picks === 1 ? "investor" : "investors"}`
+      : run.status === "running"
+        ? "in progress"
+        : "partial result";
+  return [when(run.savedAt), run.question && `↳ ${short(run.question)}`, result]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Picker for a profile's older runs, newest first. Follow-ups show their question. */
 function History({
   runs,
   shown,
   open,
 }: {
-  runs: RunSummary[];
+  runs: SearchSessionSummary[];
   shown: string | null;
   open: (id: string) => void;
 }) {
@@ -506,13 +581,12 @@ function History({
       aria-label="Run history"
       value={shown ?? ""}
       onChange={(e) => open(e.target.value)}
-      className="ml-1 h-8 max-w-48 rounded-lg border border-line bg-panel px-2 text-[13px] text-dim outline-none transition hover:border-edge"
+      className="ml-1 h-8 max-w-60 rounded-lg border border-line bg-panel px-2 text-[13px] text-dim outline-none transition hover:border-edge"
     >
       {shown === null && <option value="">Live run</option>}
       {runs.map((r) => (
         <option key={r.id} value={r.id}>
-          {when(r.savedAt)}
-          {r.complete ? ` · ${r.picks} leads` : " · partial"}
+          {runLabel(r)}
         </option>
       ))}
     </select>
