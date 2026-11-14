@@ -7,11 +7,14 @@ import type {
   RunSummary,
   SavedProfile,
 } from "@repo/shared";
+import type { Database } from "../../lib/db";
 import { profileFileSchema, runFileSchema } from "./profiles.schemas";
 
 export interface ProfileOptions {
-  /** Folder holding `<id>.json` and `<id>/runs/<run>.json` */
+  /** Folder holding `<id>.json` and `<id>/runs/<run>.json` (used when `db` is omitted) */
   dir: string;
+  /** Optional Aiven Postgres client; preferred over local files for multi-instance persistence */
+  db?: Database | null;
 }
 
 export type ProfileService = ReturnType<typeof createProfileService>;
@@ -24,12 +27,13 @@ async function read(path: string): Promise<unknown> {
   return file.json().catch(() => null);
 }
 
-/** Saved profiles and their matchup runs, as plain JSON files. Runs are only ever added. */
-export function createProfileService({ dir }: ProfileOptions) {
+/** Saved profiles and their matchup runs (Postgres when configured, else plain JSON files). */
+export function createProfileService({ dir, db = null }: ProfileOptions) {
   const file = (id: string) => join(dir, `${safe(id)}.json`);
   const runs = (id: string) => join(dir, safe(id), "runs");
 
   async function get(id: string): Promise<SavedProfile | null> {
+    if (db) return db.getSavedProfile(id);
     const parsed = profileFileSchema.safeParse(await read(file(id)));
     return parsed.success ? parsed.data : null;
   }
@@ -41,6 +45,7 @@ export function createProfileService({ dir }: ProfileOptions) {
 
   /** Newest first. */
   async function list(): Promise<ProfileSummary[]> {
+    if (db) return db.listSavedProfiles();
     const names = await readdir(dir).catch(() => []);
     const all = await Promise.all(
       names.filter((n) => n.endsWith(".json")).map((n) => get(n.slice(0, -5))),
@@ -54,11 +59,13 @@ export function createProfileService({ dir }: ProfileOptions) {
   async function create(input: ProfileInput, id: string = crypto.randomUUID()) {
     const now = new Date().toISOString();
     const profile: SavedProfile = { ...input, id, createdAt: now, updatedAt: now };
+    if (db) return db.createSavedProfile(profile);
     await write(profile);
     return profile;
   }
 
   async function update(id: string, input: ProfileInput): Promise<SavedProfile | null> {
+    if (db) return db.updateSavedProfile(id, input);
     const known = await get(id);
     if (!known) return null;
     const profile: SavedProfile = { ...known, ...input, updatedAt: new Date().toISOString() };
@@ -68,6 +75,7 @@ export function createProfileService({ dir }: ProfileOptions) {
 
   /** Removes the profile and every run under it. */
   async function remove(id: string): Promise<boolean> {
+    if (db) return db.deleteSavedProfile(id);
     if (!(await get(id))) return false;
     await rm(join(dir, safe(id)), { recursive: true, force: true });
     await rm(file(id), { force: true });
@@ -75,12 +83,14 @@ export function createProfileService({ dir }: ProfileOptions) {
   }
 
   async function run(id: string, runId: string): Promise<MatchupReplay | null> {
+    if (db) return db.getSavedProfileRun(id, runId);
     const parsed = runFileSchema.safeParse(await read(join(runs(id), `${safe(runId)}.json`)));
     return parsed.success ? parsed.data : null;
   }
 
   /** Newest first. */
   async function listRuns(id: string): Promise<RunSummary[]> {
+    if (db) return db.listSavedProfileRuns(id);
     const names = await readdir(runs(id)).catch(() => []);
     const all = await Promise.all(
       names
@@ -107,6 +117,7 @@ export function createProfileService({ dir }: ProfileOptions) {
 
   /** Saves a run under a new file; an existing run is never overwritten. Returns its id. */
   async function addRun(id: string, name: string, replay: MatchupReplay): Promise<string> {
+    if (db) return db.addSavedProfileRun(id, name, replay);
     await mkdir(runs(id), { recursive: true });
     const base = safe(name) || "run";
     for (let n = 1; ; n++) {

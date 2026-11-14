@@ -33,8 +33,8 @@ const cala = createCalaClient({
 const onboarding = createOnboardingService(cala, { snapshot: demo, db });
 const brands = createBrandsService(cala);
 
-// Saved profiles and their runs (apps/api/data/profiles, gitignored).
-const profiles = createProfileService({ dir: `${import.meta.dir}/../data/profiles` });
+// Saved profiles and their runs (Aiven Postgres when DATABASE_URL is set, else apps/api/data/profiles).
+const profiles = createProfileService({ dir: `${import.meta.dir}/../data/profiles`, db });
 
 // Langfuse first, so the agent's spans have somewhere to go.
 const telemetry = startTelemetry({

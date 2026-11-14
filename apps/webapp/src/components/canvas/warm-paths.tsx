@@ -39,7 +39,7 @@ const DEMO: Pick<CompanyMatch, "id" | "name" | "website"> = {
 const small = "h-8 px-3.5 text-[13px]";
 
 export function WarmPaths() {
-  const { state, ready } = useProgress();
+  const { state, setState, ready } = useProgress();
   const params = useSearchParams();
   const asked = params.get("profile");
   const auto = useRef(params.get("run") === "1");
@@ -135,7 +135,11 @@ export function WarmPaths() {
       const profile = await api.saved(profileId).catch(() => null);
       if (!live) return;
       if (!profile) {
-        setMissing(true);
+        if (!asked) {
+          setState((s) => (s.profileId === profileId ? { ...s, profileId: null } : s));
+        } else {
+          setMissing(true);
+        }
         return;
       }
       setSaved(profile);
@@ -152,7 +156,7 @@ export function WarmPaths() {
     return () => {
       live = false;
     };
-  }, [ready, profileId, legacy]);
+  }, [ready, profileId, legacy, asked, setState]);
 
   // Fresh from onboarding: start the agent without another click.
   useEffect(() => {
