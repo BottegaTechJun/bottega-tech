@@ -14,6 +14,7 @@ import type { StepId } from "./step-cards";
 interface Props {
   company: CompanyMatch;
   prefs: Prefs;
+  profileId: string | null;
   open: (step: StepId) => void;
   reset: () => void;
 }
@@ -33,7 +34,7 @@ const rows: { id: keyof Prefs; label: string }[] = [
 ];
 
 /** Home once onboarding is complete: the company, its facts and the saved preferences. */
-export function Dashboard({ company, prefs, open, reset }: Props) {
+export function Dashboard({ company, prefs, profileId, open, reset }: Props) {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [sure, setSure] = useState(false);
 
@@ -82,7 +83,7 @@ export function Dashboard({ company, prefs, open, reset }: Props) {
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <Link
-          href="/warm-paths"
+          href={profileId ? `/warm-paths?profile=${profileId}` : "/warm-paths"}
           className="group card flex min-h-40 animate-rise flex-col justify-between p-5 transition hover:border-edge hover:bg-raise md:col-span-3"
         >
           <span className="label">Next</span>

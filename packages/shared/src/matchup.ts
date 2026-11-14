@@ -8,6 +8,8 @@ import { citeSchema } from "./onboarding";
 export const matchupRequestSchema = z.object({
   companyId: z.uuid("companyId must be a UUID"),
   name: z.string().trim().min(1, "name is required").max(200),
+  /** Saved profile to run for: its company and preferences shape the search, the run is kept under it */
+  profileId: z.uuid("profileId must be a UUID").optional(),
   /** Optional Langfuse session id; the API makes one when missing */
   sessionId: z
     .string()

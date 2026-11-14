@@ -1,6 +1,12 @@
 import type { GoogleLanguageModelOptions } from "@ai-sdk/google";
 import { propagateAttributes, startActiveObservation } from "@langfuse/tracing";
-import type { MatchupEvent, MatchupReplay, MatchupRequest } from "@repo/shared";
+import type {
+  MatchupEvent,
+  MatchupReplay,
+  MatchupRequest,
+  Prefs,
+  SavedProfile,
+} from "@repo/shared";
 import {
   hasToolCall,
   isStepCount,
@@ -17,6 +23,7 @@ const SLUSH_2026 = "bc844d56-6ab4-452b-96bf-2661e86e592b";
 
 const INSTRUCTIONS = `You match a startup with investors for its next round, using only Cala's knowledge graph tools.
 Start from the company's funding rounds and current investors. Follow those investors' other rounds to find funds that led later rounds (Series A and up) of similar companies, and how they connect to the company's investors: shared rounds, co-investments, people, events (Slush 2026 is ${SLUSH_2026}).
+When the company says what it wants next, prefer investors that fit it.
 Rules: use only ids and source URLs that appear in tool results. A missing is_lead means unknown, never "did not lead". State what happened, never predict intent. Suggest at most 5 investors.
 Work fast: about 10 to 15 tool calls, several at once when they don't depend on each other. Then call ${ANSWER} once with your answer.`;
 
@@ -33,6 +40,13 @@ export interface MatchupDeps {
   after?: () => Promise<void>;
   /** Keeps the last run per company so it can be replayed without the agent */
   store?: RunStore;
+  /** Saved profiles: a run with a profileId reads its company and preferences and is kept under it */
+  profiles?: ProfileRuns;
+}
+
+export interface ProfileRuns {
+  get(id: string): Promise<SavedProfile | null>;
+  addRun(id: string, name: string, run: MatchupReplay): Promise<string>;
 }
 
 export interface RunStore {
@@ -51,6 +65,49 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+const ROUNDS: Record<string, string> = { A: "Series A", B: "Series B", C: "Series C" };
+const ROLES: Record<string, string> = {
+  lead: "a lead",
+  "co-lead": "a co-lead",
+  follow: "a follower",
+};
+const TIMING: Record<string, string> = {
+  now: "now",
+  "3m": "in 3 months",
+  "6m": "in 6 months",
+  later: "later",
+};
+
+/** One line on what the company wants next, from its saved preferences. Empty when unknown. */
+export function wants(prefs: Prefs): string {
+  const parts = [
+    prefs.round.length && `raising ${prefs.round.map((r) => ROUNDS[r] ?? r).join(" or ")}`,
+    prefs.size.length && `size ${prefs.size.join(", ")}`,
+    prefs.lead.length && `looking for ${prefs.lead.map((r) => ROLES[r] ?? r).join(" or ")}`,
+    prefs.geo.length && `investors in ${prefs.geo.join(", ")}`,
+    prefs.sector.length && `sector ${prefs.sector.join(", ")}`,
+    prefs.timing.length && `starting ${prefs.timing.map((t) => TIMING[t] ?? t).join(", ")}`,
+  ].filter(Boolean);
+  return parts.length ? `What it wants next: ${parts.join("; ")}.` : "";
+}
+
+/** The user prompt: the company, a few known facts, and what it wants next. */
+export function brief(req: MatchupRequest, profile: SavedProfile | null): string {
+  const facts = profile?.facts;
+  const known = [
+    facts?.hq?.value && `HQ ${facts.hq.value}`,
+    facts?.stage?.value && `stage ${facts.stage.value}`,
+    facts?.investors.length && `investors ${facts.investors.map((i) => i.name).join(", ")}`,
+  ].filter(Boolean);
+  return [
+    `Company: ${req.name} (Cala id ${req.companyId}).${known.length ? ` Known: ${known.join("; ")}.` : ""}`,
+    profile ? wants(profile.prefs) : "",
+    "Find the right investors for its next round and how they connect.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function createMatchupService(deps: MatchupDeps) {
   const { model, modelId, maxSteps = 16 } = deps;
 
@@ -62,6 +119,7 @@ export function createMatchupService(deps: MatchupDeps) {
       send(event);
     };
     const sessionId = req.sessionId ?? `warmup-${crypto.randomUUID()}`;
+    const profile = req.profileId ? ((await deps.profiles?.get(req.profileId)) ?? null) : null;
     emit({
       type: "start",
       sessionId,
@@ -76,14 +134,19 @@ export function createMatchupService(deps: MatchupDeps) {
           {
             sessionId,
             traceName: "investor-matchup",
-            tags: ["matchup"],
-            metadata: { companyId: req.companyId, model: modelId },
+            tags: req.profileId ? ["matchup", `profile:${req.profileId}`] : ["matchup"],
+            metadata: {
+              companyId: req.companyId,
+              model: modelId,
+              ...(req.profileId ? { profileId: req.profileId } : {}),
+            },
           },
           async () => {
-            const input = { companyId: req.companyId, name: req.name };
-            root.update({ input });
+            const prompt = brief(req, profile);
+            root.update({ input: { companyId: req.companyId, profileId: req.profileId, prompt } });
             try {
-              const graph = await loop(req, sessionId, emit, signal);
+              if (req.profileId && !profile) throw new Error("No saved profile with this id");
+              const graph = await loop(req, prompt, sessionId, emit, signal);
               root.update({ output: graph });
             } catch (err) {
               const text = signal?.aborted ? "Run stopped" : message(err);
@@ -95,22 +158,45 @@ export function createMatchupService(deps: MatchupDeps) {
       { asType: "agent" },
     );
     await deps.after?.().catch(() => undefined);
-    await keep(req.companyId, events).catch((err) => console.error("Saving run failed", err));
+    await keep(req, profile, sessionId, events).catch((err) =>
+      console.error("Saving run failed", err),
+    );
   }
 
-  /** A finished run replaces the saved one; a partial run is kept only when nothing finished. */
-  async function keep(companyId: string, events: MatchupEvent[]) {
-    if (!deps.store || !events.some((e) => e.type === "tool-result" || e.type === "done")) return;
+  /**
+   * A profile's runs are all kept, side by side. Without a profile, a finished run replaces
+   * the company's saved one and a partial run is kept only when nothing finished.
+   */
+  async function keep(
+    req: MatchupRequest,
+    profile: SavedProfile | null,
+    sessionId: string,
+    events: MatchupEvent[],
+  ) {
+    if (!events.some((e) => e.type === "tool-result" || e.type === "done")) return;
     const complete = events.some((e) => e.type === "done");
+    const savedAt = new Date().toISOString();
+    if (profile) {
+      await deps.profiles?.addRun(profile.id, sessionId, { complete, savedAt, events });
+      return;
+    }
+    const { companyId } = req;
+    if (!deps.store) return;
     if (!complete && (await deps.store.load(companyId))?.complete) return;
-    await deps.store.save(companyId, { complete, savedAt: new Date().toISOString(), events });
+    await deps.store.save(companyId, { complete, savedAt, events });
   }
 
   async function last(companyId: string): Promise<MatchupReplay | null> {
     return (await deps.store?.load(companyId)) ?? null;
   }
 
-  async function loop(req: MatchupRequest, sessionId: string, emit: Emit, signal?: AbortSignal) {
+  async function loop(
+    req: MatchupRequest,
+    prompt: string,
+    sessionId: string,
+    emit: Emit,
+    signal?: AbortSignal,
+  ) {
     const ledger = createLedger();
     const tools = await deps.tools();
     const agent = new ToolLoopAgent({
@@ -138,7 +224,7 @@ export function createMatchupService(deps: MatchupDeps) {
     });
 
     const result = await agent.stream({
-      prompt: `Company: ${req.name} (Cala id ${req.companyId}). Find the right investors for its next round and how they connect.`,
+      prompt,
       abortSignal: signal,
     });
 

@@ -4,6 +4,8 @@ import { createCache } from "./lib/cache";
 import { createDatabase } from "./lib/db";
 import { notFound, withMiddleware } from "./lib/http";
 import { startTelemetry } from "./lib/telemetry";
+import { createBrandsRoutes } from "./modules/brands/brands.routes";
+import { createBrandsService } from "./modules/brands/brands.service";
 import { createCalaClient } from "./modules/cala/cala.client";
 import { healthRoutes } from "./modules/health/health.routes";
 import { createCalaTools } from "./modules/matchup/matchup.agent";
@@ -13,6 +15,8 @@ import { createDatabaseRunStore, createFileRunStore } from "./modules/matchup/ma
 import demo from "./modules/onboarding/fixtures/demo.json";
 import { createOnboardingRoutes } from "./modules/onboarding/onboarding.routes";
 import { createOnboardingService } from "./modules/onboarding/onboarding.service";
+import { createProfileRoutes } from "./modules/profiles/profiles.routes";
+import { createProfileService } from "./modules/profiles/profiles.service";
 
 /** Shared Aiven Postgres client (auto-migrates schema when DATABASE_URL is configured). */
 const db = createDatabase(env.DATABASE_URL);
@@ -27,6 +31,10 @@ const cala = createCalaClient({
 });
 
 const onboarding = createOnboardingService(cala, { snapshot: demo, db });
+const brands = createBrandsService(cala);
+
+// Saved profiles and their runs (apps/api/data/profiles, gitignored).
+const profiles = createProfileService({ dir: `${import.meta.dir}/../data/profiles` });
 
 // Langfuse first, so the agent's spans have somewhere to go.
 const telemetry = startTelemetry({
@@ -49,6 +57,7 @@ const matchup = env.GEMINI_API_KEY
       after: telemetry.flush,
       // Last run per company, saved to Aiven Postgres + local .runs fallback.
       store: runStore,
+      profiles,
     })
   : null;
 
@@ -64,6 +73,8 @@ const server = Bun.serve({
       ...healthRoutes,
       ...createOnboardingRoutes(onboarding),
       ...createMatchupRoutes(matchup),
+      ...createProfileRoutes(profiles),
+      ...createBrandsRoutes(brands),
     },
     middleware,
   ),

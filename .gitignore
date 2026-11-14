@@ -25,3 +25,6 @@ coverage/
 
 # saved matchup agent runs (replayed by the board)
 apps/api/.runs/
+
+# saved profiles and their runs (local only)
+apps/api/data/

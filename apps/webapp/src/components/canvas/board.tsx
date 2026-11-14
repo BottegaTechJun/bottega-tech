@@ -4,17 +4,19 @@ import "@xyflow/react/dist/style.css";
 import {
   Background,
   BackgroundVariant,
+  ControlButton,
   Controls,
   type EdgeTypes,
   type NodeTypes,
   ReactFlow,
   useReactFlow,
 } from "@xyflow/react";
-import { useEffect, useMemo } from "react";
-import { columns, factKey, layout, nearest, type Run } from "@/lib/matchup";
-import { type EntityNode, EntityNodeComponent } from "./entity-node";
-import { type LinkEdge, LinkEdgeComponent } from "./link-edge";
-import { kindColor } from "./style";
+import { Maximize2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { columns, layout, nearest, type Run } from "@/lib/matchup";
+import { EntityNodeComponent } from "./entity-node";
+import { flow, highlight, mute, pair, type Route, segments } from "./graph";
+import { LinkEdgeComponent } from "./link-edge";
 
 export type Selection =
   | { kind: "node"; id: string }
@@ -24,8 +26,8 @@ export type Selection =
 
 const MAX_NODES = 60;
 
-const nodeTypes: NodeTypes = { entity: EntityNodeComponent };
-const edgeTypes: EdgeTypes = { link: LinkEdgeComponent };
+export const nodeTypes: NodeTypes = { entity: EntityNodeComponent };
+export const edgeTypes: EdgeTypes = { link: LinkEdgeComponent };
 
 interface Props {
   run: Run;
@@ -35,11 +37,35 @@ interface Props {
   select: (selection: Selection) => void;
   /** Side panel open; the canvas refits after it slides */
   panel: boolean;
+  domains: Record<string, string>;
+  /** One investor's routes to light up, and the route shown on its own */
+  focus?: { routes: Route[]; active: number | null } | null;
+  /** Every route of every investor; hovering a link lights the ones through it */
+  paths?: Route[];
+  /** Captions under nodes, for the full screen view */
+  labels?: boolean;
+  /** Opens the full screen view; shown as a control when given */
+  expand?: () => void;
 }
 
 /** The playground: every node and edge comes from Cala tool results in `run`. */
-export function Board({ run, companyId, explored, selection, select, panel }: Props) {
+export function Board(props: Props) {
+  const {
+    run,
+    companyId,
+    explored,
+    selection,
+    select,
+    panel,
+    domains,
+    focus,
+    labels,
+    expand,
+    paths,
+  } = props;
   const { fitView } = useReactFlow();
+  // Entity pair of the link under the pointer, for exposing the routes it carries.
+  const [over, setOver] = useState<string | null>(null);
   const { graph } = run;
 
   const { nodes, edges } = useMemo(() => {
@@ -59,98 +85,50 @@ export function Board({ run, companyId, explored, selection, select, panel }: Pr
       MAX_NODES,
     );
 
-    // Reasoned connections become one segment per hop: from → via… → to.
-    const segments = (graph?.connections ?? []).flatMap((c) => {
-      const chain = [c.from, ...c.via, c.to];
-      return chain
-        .slice(1)
-        .map((to, i) => ({ id: `${c.id}:${i}`, c, from: chain[i] ?? c.from, to, i }));
-    });
+    const parts = segments(graph?.connections ?? []);
     const pair = (a: string, b: string) => [a, b].sort().join("|");
-    const covered = new Set(segments.map((s) => pair(s.from, s.to)));
+    const covered = new Set(parts.map((s) => pair(s.from, s.to)));
     const visible = new Set(shown);
-    const rawFacts = showAll
+    const raw = showAll
       ? facts.filter(
           (f) => visible.has(f.from) && visible.has(f.to) && !covered.has(pair(f.from, f.to)),
         )
       : [];
 
-    const positions = (showAll ? layout : columns)(
+    const links = [
+      ...parts.map((s): [string, string] => [s.from, s.to]),
+      ...raw.map((f): [string, string] => [f.from, f.to]),
+    ];
+    const ends = new Set(graph?.investors.map((p) => p.id) ?? []);
+    const placed = showAll
+      ? layout(companyId, shown, links, run.entities)
+      : columns(companyId, shown, links, run.entities, ends);
+    // Captions hang under each node, so levels need more room between rows.
+    const positions = labels
+      ? Object.fromEntries(
+          Object.entries(placed).map(([id, p]) => [id, { x: p.x * 1.05, y: p.y * 1.7 }]),
+        )
+      : placed;
+
+    const base = flow({
+      run,
       companyId,
       shown,
-      [
-        ...segments.map((s): [string, string] => [s.from, s.to]),
-        ...rawFacts.map((f): [string, string] => [f.from, f.to]),
-      ],
-      run.entities,
-    );
-
-    // A round reads "Series A · Swarmia": the issuer comes from Cala's ISSUER relation.
-    const issuer = new Map(
-      facts.filter((f) => f.role === "ISSUER").map((f) => [f.to, run.entities[f.from]?.name]),
-    );
-
-    const ranks = new Map(graph?.investors.map((pick, i) => [pick.id, i + 1]) ?? []);
-    const focus = selection?.kind === "node" ? selection.id : null;
-
-    const nodes: EntityNode[] = shown.flatMap((id) => {
-      const entity = run.entities[id];
-      const position = positions[id];
-      if (!entity || !position) return [];
-      return [
-        {
-          id,
-          type: "entity",
-          position,
-          selected: focus === id,
-          data: {
-            entity,
-            rank: ranks.get(id) ?? null,
-            of: entity.role === "round" ? (issuer.get(id) ?? null) : null,
-            center: id === companyId,
-            faded: Boolean(graph) && !final.has(id),
-          },
-        },
-      ];
+      segments: parts,
+      facts: raw,
+      positions,
+      faded: (id) => Boolean(graph) && !final.has(id),
+      domains,
+      selection,
+      labels: labels ?? false,
     });
-
-    const edges: LinkEdge[] = [
-      ...rawFacts.map(
-        (f): LinkEdge => ({
-          id: `f:${factKey(f)}`,
-          source: f.from,
-          target: f.to,
-          type: "link",
-          data: {
-            color: "#ffffff",
-            reasoned: false,
-            label: null,
-            active: selection?.kind === "fact" && selection.key === factKey(f),
-            faded: Boolean(graph),
-          },
-        }),
-      ),
-      ...segments.map(
-        (s): LinkEdge => ({
-          id: s.id,
-          source: s.from,
-          target: s.to,
-          type: "link",
-          data: {
-            color: kindColor[s.c.kind],
-            reasoned: true,
-            label: s.i === 0 ? s.c.label : null,
-            open: () => select({ kind: "connection", id: s.c.id }),
-            active:
-              (selection?.kind === "connection" && selection.id === s.c.id) ||
-              (focus !== null && (s.from === focus || s.to === focus)),
-            faded: false,
-          },
-        }),
-      ),
-    ];
-    return { nodes, edges };
-  }, [run.entities, run.facts, graph, companyId, explored, selection, select]);
+    if (showAll) return base;
+    if (focus) return highlight(base, focus.routes, focus.active);
+    const through = over
+      ? (paths ?? []).filter((r) => r.hops.some((h) => pair(h.from, h.to) === over))
+      : [];
+    return through.length ? highlight(base, through, null, "#c6ec6a") : mute(base);
+  }, [run, graph, companyId, explored, selection, domains, focus, labels, over, paths]);
 
   // Keep everything in view while the agent adds nodes, and once more when it finishes.
   const count = Object.keys(run.entities).length + nodes.length;
@@ -173,7 +151,9 @@ export function Board({ run, companyId, explored, selection, select, panel }: Pr
       nodesDraggable
       nodesConnectable={false}
       proOptions={{ hideAttribution: true }}
-      onNodeClick={(_, node) => select({ kind: "node", id: node.id })}
+      onNodeClick={(_, node) => node.type === "entity" && select({ kind: "node", id: node.id })}
+      onEdgeMouseEnter={(_, edge) => setOver(pair(edge.source, edge.target))}
+      onEdgeMouseLeave={() => setOver(null)}
       onEdgeClick={(_, edge) =>
         select(
           edge.id.startsWith("f:")
@@ -185,7 +165,13 @@ export function Board({ run, companyId, explored, selection, select, panel }: Pr
       className="board"
     >
       <Background variant={BackgroundVariant.Dots} gap={22} size={1.2} color="#2b2b30" />
-      <Controls showInteractive={false} position="bottom-left" />
+      <Controls showInteractive={false} showFitView={!expand} position="bottom-left">
+        {expand && (
+          <ControlButton onClick={expand} aria-label="View full screen" title="Full screen">
+            <Maximize2 />
+          </ControlButton>
+        )}
+      </Controls>
     </ReactFlow>
   );
 }

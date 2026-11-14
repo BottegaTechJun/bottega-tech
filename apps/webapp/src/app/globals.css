@@ -123,3 +123,8 @@ body {
 .board .react-flow__controls-button {
   @apply border-line bg-panel text-dim hover:bg-raise;
 }
+
+/* Edge label pills sit above nodes so a label never hides behind one. */
+.board .react-flow__edgelabel-renderer {
+  z-index: 2000;
+}

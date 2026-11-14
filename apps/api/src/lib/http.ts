@@ -2,7 +2,7 @@ import type { z } from "zod";
 import { errorResponse, HttpError, toErrorResponse } from "./http-error";
 
 export type Handler = (req: Bun.BunRequest) => Response | Promise<Response>;
-export type Method = "GET" | "POST" | "PUT";
+export type Method = "GET" | "POST" | "PUT" | "DELETE";
 
 /** Route table in `Bun.serve` format: path → method → handler. Each module exports one. */
 export type Routes = Record<string, Partial<Record<Method | "OPTIONS", Handler>>>;
@@ -43,7 +43,7 @@ function corsHeaders(corsOrigin: string, origin: string | null): Record<string, 
   const match = origin && allowed.includes(origin) ? origin : (allowed[0] ?? "");
   return {
     "Access-Control-Allow-Origin": match,
-    "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
     Vary: "Origin",
   };

@@ -36,6 +36,10 @@ src/
 | `PUT /api/onboarding/companies/:id/preferences` | Upsert founder onboarding preferences       |
 | `POST /api/matchup`                             | Investor matchup agent, streamed over SSE   |
 | `GET /api/matchup/:id/last`                     | Last saved matchup run for a company        |
+| `GET/POST /api/profiles`                        | List (no facts) / create a saved profile    |
+| `GET/PUT/DELETE /api/profiles/:id`              | One profile; DELETE also removes its runs   |
+| `GET /api/profiles/:id/runs`                    | Run summaries, newest first                 |
+| `GET /api/profiles/:id/runs/:run`               | One saved run, replayed by the board        |
 
 ## Notes
 
@@ -60,4 +64,9 @@ src/
 - **Matchup** (`modules/matchup/`) runs a Gemini `ToolLoopAgent` over Cala's MCP tools and grounds
   its answer in the tool results (unknown ids and URLs are dropped). Each run is traced in Langfuse
   (one session per lookup) and saved to `apps/api/.runs/` so the board can replay it.
+- **Profiles** (`modules/profiles/`) are JSON files in `apps/api/data/profiles/` (gitignored):
+  `<id>.json` holds the company, its facts and the preferences, `<id>/runs/<sessionId>.json` holds
+  each run. Runs are only ever added (`wx` writes), never overwritten. A matchup request with a
+  `profileId` puts the profile's facts and preferences into the agent's prompt, tags the Langfuse
+  trace `profile:<id>` (plus `profileId` metadata) and saves the run under the profile.
 - Cala reference: the `cala` skill in `.claude/skills/cala`, or https://api.cala.ai/openapi.json.

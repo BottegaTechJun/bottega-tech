@@ -2,7 +2,8 @@
 
 import { ChevronLeft, RotateCcw } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { announce, api } from "@/lib/api";
 import { questions, suggest } from "@/lib/prefs";
 import { fresh, type Progress, useProgress } from "@/lib/store";
 import { ConfirmStep } from "./confirm-step";
@@ -40,6 +41,8 @@ export function Onboarding() {
   const view = ready ? allowed(asked, state) : "home";
   const complete = state.confirmed && state.prefsDone;
   const [sure, setSure] = useState(false);
+  const latest = useRef(state);
+  latest.current = state;
 
   // Deep links into steps not reached yet land on the first open step.
   useEffect(() => {
@@ -72,6 +75,23 @@ export function Onboarding() {
       </div>
     </div>
   );
+
+  /** Done: save the profile (update it when this company already has one), then open its canvas. */
+  const save = async () => {
+    const { company, prefs, profileId } = latest.current;
+    setState((s) => ({ ...s, prefsDone: true }));
+    if (!company) return home();
+    const facts = await api.profile(company.id).catch(() => null);
+    const input = { company, facts, prefs };
+    const saved = await api
+      .save(input, profileId)
+      .catch(() => (profileId ? api.save(input) : null))
+      .catch(() => null);
+    if (!saved) return home();
+    setState((s) => ({ ...s, profileId: saved.id }));
+    announce();
+    router.push(`/warm-paths?profile=${saved.id}`);
+  };
 
   const first = questions.findIndex((q) => state.prefs[q.id].length === 0);
 
@@ -149,6 +169,7 @@ export function Onboarding() {
             {view === "home" && complete && state.company && (
               <Dashboard
                 company={state.company}
+                profileId={state.profileId}
                 prefs={state.prefs}
                 open={(step) => go(step === "done" ? "home" : step)}
                 reset={() => setState(fresh)}
@@ -204,10 +225,7 @@ export function Onboarding() {
                 start={state.prefsDone || first < 2 ? 0 : first}
                 change={(prefs) => setState((s) => ({ ...s, prefs }))}
                 exit={home}
-                finish={() => {
-                  setState((s) => ({ ...s, prefsDone: true }));
-                  home();
-                }}
+                finish={save}
               />
             )}
           </div>

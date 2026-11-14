@@ -1,14 +1,24 @@
 import {
   apiErrorSchema,
+  brandsResponseSchema,
   type CompanyMatches,
   companyMatchesSchema,
   type FounderPreferencesState,
   founderPreferencesStateSchema,
+  type MatchupReplay,
+  matchupReplaySchema,
   type Profile,
+  type ProfileInput,
+  type ProfileSummary,
+  profileListSchema,
   profileSchema,
+  type RunSummary,
+  runListSchema,
+  type SavedProfile,
+  savedProfileSchema,
   type UpsertFounderPreferences,
 } from "@repo/shared";
-import type { z } from "zod";
+import { z } from "zod";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const TIMEOUT = 30_000;
@@ -24,17 +34,24 @@ export class ApiError extends Error {
   }
 }
 
+interface Options {
+  signal?: AbortSignal;
+  method?: "POST" | "PUT" | "DELETE";
+  body?: unknown;
+}
+
 async function request<Schema extends z.ZodType>(
   schema: Schema,
   path: string,
-  init?: RequestInit,
+  { signal, method, body: payload }: Options = {},
 ): Promise<z.infer<Schema>> {
   const timeout = AbortSignal.timeout(TIMEOUT);
-  const signal = init?.signal;
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
-      ...init,
+      method,
+      headers: payload ? { "Content-Type": "application/json" } : undefined,
+      body: payload ? JSON.stringify(payload) : undefined,
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch (err) {
@@ -43,7 +60,7 @@ async function request<Schema extends z.ZodType>(
     throw new ApiError("network_error", "Could not reach the Bottega API");
   }
 
-  const body: unknown = await res.json().catch(() => undefined);
+  const body: unknown = res.status === 204 ? null : await res.json().catch(() => undefined);
   if (!res.ok) {
     const parsed = apiErrorSchema.safeParse(body);
     throw parsed.success
@@ -61,6 +78,16 @@ async function request<Schema extends z.ZodType>(
 const profiles = new Map<string, Promise<Profile>>();
 
 export const api = {
+  /** Websites Cala knows for these entity ids, for logos. */
+  brands: async (ids: string[], signal?: AbortSignal): Promise<Record<string, string>> =>
+    (
+      await request(brandsResponseSchema, "/api/brands", {
+        method: "POST",
+        body: { ids: ids.slice(0, 100) },
+        ...(signal ? { signal } : {}),
+      })
+    ).sites,
+
   companies: (name: string, signal?: AbortSignal): Promise<CompanyMatches> =>
     request(companyMatchesSchema, `/api/onboarding/companies?${new URLSearchParams({ name })}`, {
       signal,
@@ -76,6 +103,32 @@ export const api = {
     return next;
   },
 
+  profiles: async (): Promise<ProfileSummary[]> =>
+    (await request(profileListSchema, "/api/profiles")).profiles,
+
+  saved: (id: string): Promise<SavedProfile> =>
+    request(savedProfileSchema, `/api/profiles/${encodeURIComponent(id)}`),
+
+  /** Creates a profile, or updates it when `id` is given. */
+  save: (input: ProfileInput, id?: string | null): Promise<SavedProfile> =>
+    request(savedProfileSchema, id ? `/api/profiles/${encodeURIComponent(id)}` : "/api/profiles", {
+      method: id ? "PUT" : "POST",
+      body: input,
+    }),
+
+  remove: async (id: string): Promise<void> => {
+    await request(z.unknown(), `/api/profiles/${encodeURIComponent(id)}`, { method: "DELETE" });
+  },
+
+  runs: async (id: string): Promise<RunSummary[]> =>
+    (await request(runListSchema, `/api/profiles/${encodeURIComponent(id)}/runs`)).runs,
+
+  run: (id: string, run: string): Promise<MatchupReplay> =>
+    request(
+      matchupReplaySchema,
+      `/api/profiles/${encodeURIComponent(id)}/runs/${encodeURIComponent(run)}`,
+    ),
+
   getPreferences(id: string): Promise<FounderPreferencesState> {
     return request(
       founderPreferencesStateSchema,
@@ -87,11 +140,11 @@ export const api = {
     return request(
       founderPreferencesStateSchema,
       `/api/onboarding/companies/${encodeURIComponent(id)}/preferences`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      },
+      { method: "PUT", body: payload },
     );
   },
 };
+
+/** Tells every mounted profile list to reload, e.g. after a save or delete. */
+export const PROFILES_CHANGED = "bottega:profiles";
+export const announce = () => window.dispatchEvent(new Event(PROFILES_CHANGED));
