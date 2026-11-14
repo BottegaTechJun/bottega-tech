@@ -1,0 +1,39 @@
+name: Deploy API to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'apps/api/**'
+      - 'packages/**'
+      - 'Dockerfile'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Monorepo API to Cloud Run
+        run: |
+          gcloud run deploy bottega-api \
+            --source . \
+            --project sincere-cacao-514419-v5 \
+            --region europe-north1 \
+            --allow-unauthenticated \
+            --min-instances 1 \
+            --memory 1Gi \
+            --cpu 1 \
+            --quiet
