@@ -17,6 +17,7 @@ const SLUSH_2026 = "bc844d56-6ab4-452b-96bf-2661e86e592b";
 
 const INSTRUCTIONS = `You match a startup with investors for its next round, using only Cala's knowledge graph tools.
 Start from the company's funding rounds and current investors. Follow those investors' other rounds to find funds that led later rounds (Series A and up) of similar companies, and how they connect to the company's investors: shared rounds, co-investments, people, events (Slush 2026 is ${SLUSH_2026}).
+When founder-provided company context is present, the company may not exist in Cala. Do not try to retrieve its synthetic id. Use the founder's context to frame the search, and use any selected similar-company ids as the Cala-grounded analogues.
 Rules: use only ids and source URLs that appear in tool results. A missing is_lead means unknown, never "did not lead". State what happened, never predict intent. Suggest at most 5 investors.
 Work fast: about 10 to 15 tool calls, several at once when they don't depend on each other. Then call ${ANSWER} once with your answer.`;
 
@@ -51,6 +52,24 @@ function message(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function founderContext(req: MatchupRequest): string {
+  const manual = req.manualCompany;
+  if (!manual) return "";
+  const similar = manual.similarCompanies.length
+    ? manual.similarCompanies.map((company) => `${company.name} (Cala id ${company.id})`).join(", ")
+    : "none selected";
+  return [
+    "Founder-provided context (not a Cala entity):",
+    `- website: ${manual.website ?? "unknown"}`,
+    `- HQ or main market: ${manual.hq ?? "unknown"}`,
+    `- what they build: ${manual.industry ?? "unknown"}`,
+    `- current stage: ${manual.stage ?? "unknown"}`,
+    `- next round: ${manual.targetRound ?? "unknown"}`,
+    `- target amount: ${manual.targetAmount ?? "unknown"}`,
+    `Selected similar Cala companies: ${similar}`,
+  ].join("\n");
+}
+
 export function createMatchupService(deps: MatchupDeps) {
   const { model, modelId, maxSteps = 16 } = deps;
 
@@ -80,7 +99,11 @@ export function createMatchupService(deps: MatchupDeps) {
             metadata: { companyId: req.companyId, model: modelId },
           },
           async () => {
-            const input = { companyId: req.companyId, name: req.name };
+            const input = {
+              companyId: req.companyId,
+              name: req.name,
+              manualCompany: Boolean(req.manualCompany),
+            };
             root.update({ input });
             try {
               const graph = await loop(req, sessionId, emit, signal);
@@ -112,6 +135,14 @@ export function createMatchupService(deps: MatchupDeps) {
 
   async function loop(req: MatchupRequest, sessionId: string, emit: Emit, signal?: AbortSignal) {
     const ledger = createLedger();
+    if (req.manualCompany) {
+      ledger.entities.set(req.companyId, {
+        id: req.companyId,
+        name: req.name,
+        type: "FounderProvidedCompany",
+        role: "company",
+      });
+    }
     const tools = await deps.tools();
     const agent = new ToolLoopAgent({
       model,
@@ -138,7 +169,12 @@ export function createMatchupService(deps: MatchupDeps) {
     });
 
     const result = await agent.stream({
-      prompt: `Company: ${req.name} (Cala id ${req.companyId}). Find the right investors for its next round and how they connect.`,
+      prompt: [
+        `Company: ${req.name} (Cala id ${req.companyId}). Find the right investors for its next round and how they connect.`,
+        founderContext(req),
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
       abortSignal: signal,
     });
 

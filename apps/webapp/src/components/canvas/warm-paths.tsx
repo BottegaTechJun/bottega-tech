@@ -35,6 +35,7 @@ const small = "h-8 px-3.5 text-[13px]";
 export function WarmPaths() {
   const { state, ready } = useProgress();
   const company = state.company ?? DEMO;
+  const manualCompany = state.manualCompany;
   const [run, dispatch] = useReducer(
     (current: Run, action: Parameters<typeof reduce>[1] | { type: "settle" }) =>
       action.type === "settle" ? settle(current) : reduce(current, action),
@@ -56,7 +57,12 @@ export function WarmPaths() {
     dispatch({ type: "begin", sessionId });
     try {
       await streamMatchup(
-        { companyId: company.id, name: company.name, sessionId },
+        {
+          companyId: company.id,
+          name: company.name,
+          sessionId,
+          ...(manualCompany ? { manualCompany } : {}),
+        },
         (event) => dispatch({ type: "event", event }),
         controller.signal,
       );
@@ -72,7 +78,7 @@ export function WarmPaths() {
             : "Lookup failed",
       });
     }
-  }, [company.id, company.name]);
+  }, [company.id, company.name, manualCompany]);
 
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -125,7 +131,7 @@ export function WarmPaths() {
               <p className="text-sm leading-relaxed">{graph.summary}</p>
               {graph.dropped > 0 && (
                 <p className="mt-2 text-xs text-faint">
-                  {graph.dropped} claim{graph.dropped === 1 ? "" : "s"} without a Cala source{" "}
+                  {graph.dropped} claim{graph.dropped === 1 ? "" : "s"} without a source{" "}
                   {graph.dropped === 1 ? "was" : "were"} left out.
                 </p>
               )}
@@ -214,7 +220,7 @@ export function WarmPaths() {
             <div className="pointer-events-none absolute inset-0 grid place-items-center px-6">
               <p className="max-w-xs text-center text-sm leading-relaxed text-dim">
                 The agent starts at {company.name}, follows its investors into the rounds they
-                joined, and finds who led them. Every line here comes from a sourced Cala record.
+                joined, and finds who led them. Every line here comes from a sourced company record.
               </p>
             </div>
           )}
@@ -245,7 +251,7 @@ function Status({ run }: { run: Run }) {
     return (
       <span className={style}>
         <LoaderCircle className="size-3.5 animate-spin text-accent" />
-        Exploring Cala, {calls} {calls === 1 ? "call" : "calls"} so far
+        Tracing your network, {calls} {calls === 1 ? "step" : "steps"} so far
       </span>
     );
   }
@@ -260,7 +266,7 @@ function Status({ run }: { run: Run }) {
   if (run.status === "done") {
     return (
       <span className={style}>
-        {picks} suggested {picks === 1 ? "lead" : "leads"} from {calls} Cala calls
+        {picks} suggested {picks === 1 ? "lead" : "leads"} from {calls} research steps
         {run.savedAt && <>, saved {when(run.savedAt)}</>}
       </span>
     );
