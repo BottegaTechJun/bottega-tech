@@ -24,11 +24,11 @@ src/
 
 ## Endpoints
 
-| Ours          | Notes                                 |
-| ------------- | ------------------------------------- |
-| `GET /health` | `{ status: "ok" }` (`HealthResponse`) |
-
-Feature endpoints get added here as they land.
+| Ours                                  | Notes                                       |
+| ------------------------------------- | ------------------------------------------- |
+| `GET /health`                         | `{ status: "ok" }` (`HealthResponse`)       |
+| `GET /api/onboarding/companies?name=` | Company search (entity search + retrieval)  |
+| `GET /api/onboarding/companies/:id`   | Sourced profile (introspection + retrieval) |
 
 ## Notes
 
@@ -47,4 +47,7 @@ Feature endpoints get added here as they land.
 - **Tests never hit the network.** Inject a mock through the client's `fetch` option. Tests
   must not import `config/env.ts` (it exits without a key).
 - Env lives in `apps/api/.env` (see `.env.example`); Bun loads it automatically.
+- **Onboarding** serves `modules/onboarding/fixtures/demo.json` first (the demo company, instant),
+  then caches live results for an hour. Refresh the fixture with `bun run snapshot`.
+- `CORS_ORIGIN` accepts a comma-separated list (web on :3000, webapp on :3001).
 - Cala reference: the `cala` skill in `.claude/skills/cala`, or https://api.cala.ai/openapi.json.

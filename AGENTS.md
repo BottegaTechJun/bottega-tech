@@ -15,6 +15,7 @@ funding rounds, investors). The repo is boilerplate ready for features; none are
 ```
 apps/
   web/              Next.js (App Router) + Tailwind + shadcn/ui   → see apps/web/AGENTS.md
+  webapp/           Founder onboarding (Next.js, :3001)           → see apps/webapp/AGENTS.md
   api/              Bun HTTP server (Bun.serve, no framework)     → see apps/api/AGENTS.md
 packages/
   shared/           zod schemas + inferred types: the web ↔ api contract
@@ -26,15 +27,15 @@ tsconfig.base.json  strict TS settings every package extends
 
 ## Commands (run from the repo root)
 
-| Command             | What it does                             |
-| ------------------- | ---------------------------------------- |
-| `bun install`       | Install all workspaces                   |
-| `bun dev`           | Run web (:3000) and api (:4000) together |
-| `bun run build`     | Build both apps                          |
-| `bun run typecheck` | `tsc --noEmit` in every workspace        |
-| `bun run lint`      | Biome lint + format check                |
-| `bun run format`    | Biome format (writes)                    |
-| `bun test`          | Bun tests                                |
+| Command             | What it does                                    |
+| ------------------- | ----------------------------------------------- |
+| `bun install`       | Install all workspaces                          |
+| `bun dev`           | Run web (:3000), webapp (:3001) and api (:4000) |
+| `bun run build`     | Build both apps                                 |
+| `bun run typecheck` | `tsc --noEmit` in every workspace               |
+| `bun run lint`      | Biome lint + format check                       |
+| `bun run format`    | Biome format (writes)                           |
+| `bun test`          | Bun tests                                       |
 
 ## Conventions
 

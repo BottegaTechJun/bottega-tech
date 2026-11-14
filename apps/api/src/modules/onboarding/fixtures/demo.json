@@ -1,0 +1,306 @@
+{
+  "searches": {
+    "in parallel": {
+      "companies": [
+        {
+          "id": "6ebd9536-fcc5-5921-8938-ce3497eb6262",
+          "name": "In Parallel",
+          "description": "In Parallel maintains shared context from meetings and relevant chats, so your AI tools can work with what’s happening now. Every piece of context knows its audience.",
+          "hq": "Helsinki, Finland",
+          "website": "in-parallel.com"
+        },
+        {
+          "id": "d033b368-0524-4d4e-b3aa-629b2db01f8b",
+          "name": "IN PARALLEL LTD",
+          "description": "British consulting firm founded in 2008 and headquartered in Watlington, Oxfordshire.",
+          "hq": null,
+          "website": null
+        },
+        {
+          "id": "349b87f0-3436-4fff-afb4-90574f675c73",
+          "name": "IN PARALLEL PRODUCTIONS CIC",
+          "description": "A UK entertainment company based in Doncaster, founded in 2024.",
+          "hq": null,
+          "website": null
+        },
+        {
+          "id": "6c293409-3a3f-48b6-afbd-da694fe3cd6a",
+          "name": "GROW IN PARALLEL LTD",
+          "description": "A London‑based company incorporated in 2020.",
+          "hq": null,
+          "website": null
+        },
+        {
+          "id": "6c3dcd93-3f75-4bb7-97b5-90ba7a50c01e",
+          "name": "IN PARALLEL MUSIC LTD",
+          "description": "A London‑based British entertainment company founded in 2025.",
+          "hq": null,
+          "website": null
+        },
+        {
+          "id": "6f3985e5-caf4-419e-9627-7ab9af699937",
+          "name": "IN PARALLEL LIVE LLP",
+          "description": "A London-based United Kingdom limited liability partnership founded in 2025.",
+          "hq": null,
+          "website": null
+        },
+        {
+          "id": "aa5a07bc-41f6-49e3-8c2f-75d0df971dd8",
+          "name": "IN-PARALLEL COMPUTER STAFF LTD.",
+          "description": "British consulting company founded in 1995",
+          "hq": null,
+          "website": null
+        },
+        {
+          "id": "542d4698-c5ba-4a78-8e65-eed439f71cd7",
+          "name": "Parallel Carbon",
+          "description": "Develops technology for simultaneous carbon capture (DAC) and green hydrogen production using renewable energy.",
+          "hq": null,
+          "website": "parallelcarbon.com"
+        }
+      ]
+    }
+  },
+  "profiles": {
+    "6ebd9536-fcc5-5921-8938-ce3497eb6262": {
+      "id": "6ebd9536-fcc5-5921-8938-ce3497eb6262",
+      "name": "In Parallel",
+      "description": "In Parallel maintains shared context from meetings and relevant chats, so your AI tools can work with what’s happening now. Every piece of context knows its audience.",
+      "website": {
+        "value": "in-parallel.com",
+        "sources": [
+          {
+            "name": "avoindata.prh.fi",
+            "url": "https://avoindata.prh.fi/opendata-ytj-api/v3/companies?businessId=3394334-7",
+            "date": "2026-11-10",
+            "rank": "FILING"
+          },
+          {
+            "name": "in-parallel.com",
+            "url": "https://in-parallel.com/",
+            "date": "2026-11-02",
+            "rank": "PRIMARY"
+          },
+          {
+            "name": "dns.google",
+            "url": "https://dns.google/query?name=in-parallel.com&type=A",
+            "date": "2026-11-02",
+            "rank": "PRIMARY"
+          }
+        ]
+      },
+      "hq": {
+        "value": "Helsinki, Finland",
+        "sources": [
+          {
+            "name": "in-parallel.com",
+            "url": "https://in-parallel.com/about-us",
+            "date": "2026-11-10",
+            "rank": "PRIMARY"
+          },
+          {
+            "name": "linkedin.com",
+            "url": "https://www.linkedin.com/company/in-parallel-oy/",
+            "date": "2026-11-02",
+            "rank": "AGGREGATOR"
+          }
+        ]
+      },
+      "founded": {
+        "value": "2023-10-10",
+        "sources": [
+          {
+            "name": "avoindata.prh.fi",
+            "url": "https://avoindata.prh.fi/opendata-ytj-api/v3/companies?businessId=3394334-7",
+            "date": "2026-11-10",
+            "rank": "FILING"
+          }
+        ]
+      },
+      "stage": {
+        "value": "SEED",
+        "sources": [
+          {
+            "name": "prnewswire.com",
+            "url": "https://www.prnewswire.com/fi/lehdistotiedotteet/in-parallel-secures-2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai-302301636.html",
+            "date": "2024-11-12",
+            "rank": "PRIMARY"
+          },
+          {
+            "name": "bebeez.eu",
+            "url": "https://bebeez.eu/2024/11/12/in-parallel-secures-e2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai/",
+            "date": "2024-11-12",
+            "rank": "PRESS"
+          },
+          {
+            "name": "theaiinsider.tech",
+            "url": "https://theaiinsider.tech/?p=28926",
+            "date": "2024-11-12",
+            "rank": "PRESS"
+          }
+        ]
+      },
+      "industries": [
+        {
+          "value": "SOFTWARE_AND_SERVICES",
+          "sources": [
+            {
+              "name": "linkedin.com",
+              "url": "https://www.linkedin.com/company/in-parallel-oy/",
+              "date": "2026-11-02",
+              "rank": "AGGREGATOR"
+            }
+          ]
+        }
+      ],
+      "rounds": [
+        {
+          "id": "81a35997-c8e2-59de-8a9f-021d97e4f6a9",
+          "label": "SEED",
+          "date": "2024-11-12",
+          "amount": 2800000,
+          "currency": "EUR",
+          "backers": [
+            {
+              "id": "476a73ac-afa2-4713-9f73-188bc7ec0b95",
+              "name": "Lifeline Ventures",
+              "lead": true
+            },
+            {
+              "id": "bbfc25cc-fc30-4d3c-b3f0-1e1f862fc5f8",
+              "name": "Notion Capital",
+              "lead": null
+            }
+          ],
+          "sources": [
+            {
+              "name": "prnewswire.com",
+              "url": "https://www.prnewswire.com/fi/lehdistotiedotteet/in-parallel-secures-2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai-302301636.html",
+              "date": "2024-11-12",
+              "rank": "PRIMARY"
+            },
+            {
+              "name": "bebeez.eu",
+              "url": "https://bebeez.eu/2024/11/12/in-parallel-secures-e2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai/",
+              "date": "2024-11-12",
+              "rank": "PRESS"
+            },
+            {
+              "name": "theaiinsider.tech",
+              "url": "https://theaiinsider.tech/?p=28926",
+              "date": "2024-11-12",
+              "rank": "PRESS"
+            }
+          ]
+        }
+      ],
+      "investors": [
+        {
+          "id": "476a73ac-afa2-4713-9f73-188bc7ec0b95",
+          "ids": ["476a73ac-afa2-4713-9f73-188bc7ec0b95"],
+          "name": "Lifeline Ventures",
+          "website": "lifelineventures.com",
+          "led": ["SEED"],
+          "sources": [
+            {
+              "name": "prnewswire.com",
+              "url": "https://www.prnewswire.com/fi/lehdistotiedotteet/in-parallel-secures-2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai-302301636.html",
+              "date": "2024-11-12",
+              "rank": "PRIMARY"
+            },
+            {
+              "name": "bebeez.eu",
+              "url": "https://bebeez.eu/2024/11/12/in-parallel-secures-e2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai/",
+              "date": "2024-11-12",
+              "rank": "PRESS"
+            },
+            {
+              "name": "theaiinsider.tech",
+              "url": "https://theaiinsider.tech/?p=28926",
+              "date": "2024-11-12",
+              "rank": "PRESS"
+            }
+          ]
+        },
+        {
+          "id": "bbfc25cc-fc30-4d3c-b3f0-1e1f862fc5f8",
+          "ids": ["bbfc25cc-fc30-4d3c-b3f0-1e1f862fc5f8"],
+          "name": "Notion Capital",
+          "website": "notioncap.com",
+          "led": [],
+          "sources": [
+            {
+              "name": "prnewswire.com",
+              "url": "https://www.prnewswire.com/fi/lehdistotiedotteet/in-parallel-secures-2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai-302301636.html",
+              "date": "2024-11-12",
+              "rank": "PRIMARY"
+            },
+            {
+              "name": "bebeez.eu",
+              "url": "https://bebeez.eu/2024/11/12/in-parallel-secures-e2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai/",
+              "date": "2024-11-12",
+              "rank": "PRESS"
+            },
+            {
+              "name": "theaiinsider.tech",
+              "url": "https://theaiinsider.tech/?p=28926",
+              "date": "2024-11-12",
+              "rank": "PRESS"
+            }
+          ]
+        }
+      ],
+      "people": [
+        {
+          "id": "8723f963-f5b3-5cb3-8df7-50e9d05c6e1f",
+          "name": "Markku Mäkeläinen",
+          "roles": ["CEO", "FOUNDER"],
+          "sources": [
+            {
+              "name": "in-parallel.com",
+              "url": "https://in-parallel.com/about-us",
+              "date": "2026-11-10",
+              "rank": "PRIMARY"
+            },
+            {
+              "name": "prnewswire.com",
+              "url": "https://www.prnewswire.com/fi/lehdistotiedotteet/in-parallel-secures-2-8m-seed-funding-to-revolutionize-corporate-strategy-execution-with-ai-302301636.html",
+              "date": "2024-11-12",
+              "rank": "PRIMARY"
+            },
+            {
+              "name": "sttinfo.fi",
+              "url": "https://www.sttinfo.fi/tiedote/72240526/kenraaliluutnantti-evp-kim-jaameri-valittu-in-parallel-oyn-hallitukseen?lang=fi",
+              "date": "2026-08-18",
+              "rank": "PRIMARY"
+            }
+          ]
+        },
+        {
+          "id": "4abfea14-51ea-55a1-9076-ca933b437bd6",
+          "name": "Kristian Luoma",
+          "roles": ["FOUNDER"],
+          "sources": [
+            {
+              "name": "in-parallel.com",
+              "url": "https://in-parallel.com/about-us",
+              "date": "2026-11-03",
+              "rank": "PRIMARY"
+            }
+          ]
+        }
+      ],
+      "slush": {
+        "listed": true,
+        "sources": [
+          {
+            "name": "Slush",
+            "url": "https://slush.org/",
+            "date": "2026-11-14",
+            "rank": "OTHER"
+          }
+        ]
+      }
+    }
+  }
+}
