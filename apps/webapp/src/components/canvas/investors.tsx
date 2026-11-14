@@ -1,6 +1,6 @@
 "use client";
 
-import type { Connection, Entity } from "@repo/shared";
+import type { Cite, Connection, Entity } from "@repo/shared";
 import { ChevronRight, CircleAlert, FileText, Network, Route } from "lucide-react";
 import type { Run } from "@/lib/matchup";
 import { type Route as Path, routes } from "./graph";
@@ -10,6 +10,8 @@ export interface Brief {
   entity: Entity;
   rank: number;
   why: string;
+  /** Sources behind the pick itself; empty in runs saved before picks carried them */
+  evidence: Cite[];
   /** Connections that start or end at this investor */
   own: Connection[];
   /** Every route from the company to this investor */
@@ -40,11 +42,15 @@ export function brief(run: Run, id: string, companyId: string): Brief | null {
   const led =
     own.some((c) => c.kind === "led") ||
     own.some((c) => c.facts.some((f) => f.from === id && f.lead));
-  const cites = new Set(paths.flatMap((c) => c.evidence.map((e) => e.url ?? e.name)));
+  const cites = new Set([
+    ...paths.flatMap((c) => c.evidence.map((e) => e.url ?? e.name)),
+    ...pick.evidence.map((e) => e.url ?? e.name),
+  ]);
   return {
     entity,
     rank: index + 1,
     why: pick.why,
+    evidence: pick.evidence,
     own,
     routes: found,
     paths,
@@ -74,21 +80,8 @@ export function Investors(props: Props) {
     return b ? [b] : [];
   });
   const running = run.status === "running";
-
-  if (!rows.length && !running) {
-    if (run.status !== "incomplete") return null;
-    return (
-      <div className="grid h-full place-items-center px-6">
-        <div className="max-w-xs text-center">
-          <p className="text-sm text-dim">The run stopped before the agent picked investors.</p>
-          <button type="button" onClick={graph} className="btn-ghost mt-4 h-8 px-3.5 text-[13px]">
-            <Network className="size-3.5" />
-            See what it explored
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const empty = !rows.length && !running;
+  if (empty && run.status === "idle") return null;
 
   return (
     <div className="h-full overflow-y-auto px-4 pt-4 pb-10 md:px-6">
@@ -101,18 +94,44 @@ export function Investors(props: Props) {
           <span className="ml-auto">{meta}</span>
         </div>
 
-        <ul className="mt-2 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel">
-          {rows.map((row, i) => (
-            <li
-              key={row.entity.id}
-              className="animate-rise"
-              style={{ animationDelay: `${i * 60}ms` }}
-            >
-              <Row row={row} domains={domains} active={selected === row.entity.id} open={open} />
-            </li>
-          ))}
-          {running && rows.length === 0 && [0, 1, 2, 3].map((n) => <Skeleton key={n} n={n} />)}
-        </ul>
+        {empty ? (
+          <div className="mt-2 flex flex-col items-center rounded-2xl border border-line bg-panel px-6 py-12 text-center">
+            {run.status === "incomplete" ? (
+              <>
+                <p className="max-w-md text-sm leading-relaxed text-dim">
+                  {run.error && run.error !== "Run stopped"
+                    ? run.error
+                    : "The run stopped before the agent picked investors."}
+                </p>
+                <button
+                  type="button"
+                  onClick={graph}
+                  className="btn-ghost mt-4 h-8 px-3.5 text-[13px]"
+                >
+                  <Network className="size-3.5" />
+                  See what it explored
+                </button>
+              </>
+            ) : (
+              <p className="max-w-md text-sm leading-relaxed text-dim">
+                {run.graph?.summary || "No investors fit."}
+              </p>
+            )}
+          </div>
+        ) : (
+          <ul className="mt-2 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel">
+            {rows.map((row, i) => (
+              <li
+                key={row.entity.id}
+                className="animate-rise"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <Row row={row} domains={domains} active={selected === row.entity.id} open={open} />
+              </li>
+            ))}
+            {running && rows.length === 0 && [0, 1, 2, 3].map((n) => <Skeleton key={n} n={n} />)}
+          </ul>
+        )}
       </div>
     </div>
   );

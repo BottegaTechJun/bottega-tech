@@ -69,4 +69,16 @@ src/
   each run. Runs are only ever added (`wx` writes), never overwritten. A matchup request with a
   `profileId` puts the profile's facts and preferences into the agent's prompt, tags the Langfuse
   trace `profile:<id>` (plus `profileId` metadata) and saves the run under the profile.
+- **Follow-ups**: a matchup request with `followUp: { question, parent? }` (needs `profileId`)
+  revises a finished profile run instead of starting over. The API loads the parent run itself
+  (the newest finished one when `parent` is missing), replays its entities and facts into the new
+  run's ledger with `replay()` so grounding still holds, emits them as a `follow-up` event after
+  `start`, and uses the follow-up instructions (the question wins over saved preferences). Run
+  summaries carry `question` and `parent`. Langfuse tags these runs `follow-up`.
+- **Evidence**: every suggested investor carries `evidence` (source URLs from tool results, from
+  Cala's entity sources or knowledge_search `origins`). A pick the agent left unsourced is backed
+  by the investor's own sourced round records; an investor with neither is dropped.
+  knowledge_search sources have no date, so recency reads dated round records, by their earliest
+  source (later dates are re-crawls). Follow-ups get 6 steps, today's date, and each pick's dated
+  rounds and sources in the prompt.
 - Cala reference: the `cala` skill in `.claude/skills/cala`, or https://api.cala.ai/openapi.json.

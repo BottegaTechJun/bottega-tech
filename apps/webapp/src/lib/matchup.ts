@@ -79,7 +79,9 @@ export type TraceItem =
       input: string;
       result: { ok: boolean; summary: string; found: number } | null;
     }
-  | { kind: "error"; key: string; message: string };
+  | { kind: "error"; key: string; message: string }
+  /** A follow-up's starting point: the previous answer and what it saw in Cala */
+  | { kind: "context"; key: string; question: string; entities: number; facts: number };
 
 export interface Run {
   status: Status;
@@ -94,6 +96,8 @@ export interface Run {
   entities: Record<string, Entity>;
   facts: Record<string, Fact>;
   graph: MatchupGraph | null;
+  /** Set when this run revised another one: the question and the parent run's id */
+  followUp: { question: string; parent: string } | null;
 }
 
 export const idle: Run = {
@@ -108,10 +112,12 @@ export const idle: Run = {
   entities: {},
   facts: {},
   graph: null,
+  followUp: null,
 };
 
 export type Action =
-  | { type: "begin"; sessionId: string }
+  /** `followUp` is known up front when the run revises the one on screen */
+  | { type: "begin"; sessionId: string; followUp?: { question: string; parent: string } }
   | { type: "event"; event: MatchupEvent }
   | { type: "fail"; message: string }
   | { type: "replay"; saved: MatchupReplay };
@@ -172,6 +178,26 @@ function apply(run: Run, event: MatchupEvent): Run {
           ];
       return { ...run, trace, facts, entities: addEntities(run.entities, event.entities) };
     }
+    case "follow-up": {
+      const facts = { ...run.facts };
+      for (const fact of event.facts) facts[factKey(fact)] = fact;
+      return {
+        ...run,
+        followUp: { question: event.question, parent: event.parent },
+        facts,
+        entities: addEntities(run.entities, event.entities),
+        trace: [
+          ...run.trace,
+          {
+            kind: "context",
+            key: "ctx",
+            question: event.question,
+            entities: event.entities.length,
+            facts: event.facts.length,
+          },
+        ],
+      };
+    }
     case "done":
       return {
         ...run,
@@ -195,7 +221,13 @@ function apply(run: Run, event: MatchupEvent): Run {
 export function reduce(run: Run, action: Action): Run {
   switch (action.type) {
     case "begin":
-      return { ...idle, status: "running", sessionId: action.sessionId, startedAt: Date.now() };
+      return {
+        ...idle,
+        status: "running",
+        sessionId: action.sessionId,
+        startedAt: Date.now(),
+        followUp: action.followUp ?? null,
+      };
     case "event":
       return apply(run, action.event);
     case "replay": {

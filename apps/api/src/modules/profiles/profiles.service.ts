@@ -91,12 +91,15 @@ export function createProfileService({ dir }: ProfileOptions) {
           if (!saved) return null;
           const start = saved.events.find((e) => e.type === "start");
           const done = saved.events.find((e) => e.type === "done");
+          const follow = saved.events.find((e) => e.type === "follow-up");
           return {
             id: runId,
             sessionId: start?.type === "start" ? start.sessionId : null,
             savedAt: saved.savedAt,
             complete: saved.complete,
             picks: done?.type === "done" ? done.graph.investors.length : 0,
+            question: follow?.type === "follow-up" ? follow.question : null,
+            parent: follow?.type === "follow-up" ? follow.parent : null,
           };
         }),
     );

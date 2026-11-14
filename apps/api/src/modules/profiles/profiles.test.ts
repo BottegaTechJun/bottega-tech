@@ -66,6 +66,31 @@ describe("profile service", () => {
     expect(runs[0]?.sessionId).toBe("warmup-1");
     expect((await service.run(id, "warmup-1"))?.savedAt).toBe("2026-01-01");
   });
+
+  test("lists a follow-up with its question and the run it revised", async () => {
+    const { id } = await service.create(input);
+    await service.addRun(id, "warmup-1", replay("2026-01-01", true));
+    const base = replay("2026-01-02", true);
+    await service.addRun(id, "warmup-2", {
+      ...base,
+      events: [
+        ...base.events,
+        {
+          type: "follow-up",
+          question: "Only Nordic funds",
+          parent: "warmup-1",
+          entities: [],
+          facts: [],
+        },
+      ],
+    });
+
+    const runs = await service.listRuns(id);
+    expect(runs.map((r) => [r.id, r.question, r.parent])).toEqual([
+      ["warmup-2", "Only Nordic funds", "warmup-1"],
+      ["warmup-1", null, null],
+    ]);
+  });
 });
 
 describe("profile routes", () => {

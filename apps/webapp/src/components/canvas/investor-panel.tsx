@@ -1,9 +1,10 @@
 "use client";
 
-import type { Entity, Prefs } from "@repo/shared";
+import type { Cite, Entity, Prefs } from "@repo/shared";
 import { Check, ChevronDown, Minus } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { day } from "@/lib/format";
 import type { Run } from "@/lib/matchup";
 import { answer } from "@/lib/prefs";
 import { Actions, actions } from "./actions";
@@ -48,6 +49,7 @@ export function InvestorPanel(props: Props) {
         </div>
       </div>
       <p className="mt-4 text-sm leading-relaxed text-text/90">{row.why}</p>
+      <Sources cites={row.evidence} />
 
       {row.routes.length > 0 && (
         <Section title="Next steps">
@@ -94,6 +96,46 @@ export function InvestorPanel(props: Props) {
       <Section title="Fit with your next round">
         <Fit prefs={prefs} text={text} />
       </Section>
+    </div>
+  );
+}
+
+const MAX_SOURCES = 4;
+
+/** The sources behind the pick, under its reason: where it was published and when, if dated. */
+function Sources({ cites }: { cites: Cite[] }) {
+  if (!cites.length) return null;
+  const style =
+    "inline-flex h-6 min-w-0 items-center gap-1.5 rounded-full border border-line px-2 font-mono text-[10.5px] text-dim";
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      {cites.slice(0, MAX_SOURCES).map((cite) => {
+        const label = (
+          <>
+            <span className="max-w-44 truncate">{cite.name}</span>
+            {cite.date && <span className="shrink-0 text-faint">{day(cite.date)}</span>}
+          </>
+        );
+        return cite.url ? (
+          <a
+            key={cite.url}
+            href={cite.url}
+            target="_blank"
+            rel="noreferrer"
+            title={cite.url}
+            className={`${style} transition hover:border-edge hover:text-text`}
+          >
+            {label}
+          </a>
+        ) : (
+          <span key={cite.name} className={style}>
+            {label}
+          </span>
+        );
+      })}
+      {cites.length > MAX_SOURCES && (
+        <span className="font-mono text-[10.5px] text-faint">+{cites.length - MAX_SOURCES}</span>
+      )}
     </div>
   );
 }

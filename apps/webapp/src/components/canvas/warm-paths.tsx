@@ -18,6 +18,8 @@ import { Shell } from "@/components/shell";
 import { api } from "@/lib/api";
 import { idle, lastMatchup, type Run, reduce, settle, streamMatchup } from "@/lib/matchup";
 import { useProgress } from "@/lib/store";
+import { suggestions } from "@/lib/suggest";
+import { Ask, Asked } from "./ask";
 import { Board, type Selection } from "./board";
 import { domains as brands } from "./brand";
 import { DetailPanel } from "./detail-panel";
@@ -67,46 +69,64 @@ export function WarmPaths() {
   const [view, setView] = useState<"list" | "graph">("list");
   const abort = useRef<AbortController | null>(null);
 
-  const start = useCallback(async () => {
-    abort.current?.abort();
-    const controller = new AbortController();
-    abort.current = controller;
-    const sessionId = `warmup-${crypto.randomUUID()}`;
-    setSelection(null);
-    setExplored(false);
-    setPanel(true);
-    dispatch({ type: "begin", sessionId });
-    try {
-      await streamMatchup(
-        {
-          companyId: company.id,
-          name: company.name,
-          sessionId,
-          ...(saved ? { profileId: saved.id } : {}),
-        },
-        (event) => dispatch({ type: "event", event }),
-        controller.signal,
-      );
-      dispatch({ type: "settle" });
-      if (saved) {
-        const next = await api.runs(saved.id).catch(() => null);
-        if (next) {
-          setRuns(next);
-          setShown(next[0]?.id ?? null);
-        }
-      }
-    } catch (err) {
-      const stopped = controller.signal.aborted;
+  /** Runs the agent; with a question, as a follow-up on the run on screen. */
+  const start = useCallback(
+    async (question?: string) => {
+      abort.current?.abort();
+      const controller = new AbortController();
+      abort.current = controller;
+      const sessionId = `warmup-${crypto.randomUUID()}`;
+      // Without a parent the API picks the newest finished run, which is the one on screen
+      // when it just finished and its id hasn't come back yet.
+      const followUp = question && saved ? { question, ...(shown ? { parent: shown } : {}) } : null;
+      setSelection(null);
+      setExplored(false);
+      setPanel(true);
+      // The live run has no saved id until it ends.
+      setShown(null);
       dispatch({
-        type: "fail",
-        message: stopped
-          ? "Stopped. Results so far are kept."
-          : err instanceof Error
-            ? err.message
-            : "Lookup failed",
+        type: "begin",
+        sessionId,
+        ...(followUp?.parent
+          ? { followUp: { question: followUp.question, parent: followUp.parent } }
+          : {}),
       });
-    }
-  }, [company.id, company.name, saved]);
+      try {
+        await streamMatchup(
+          {
+            companyId: company.id,
+            name: company.name,
+            sessionId,
+            ...(saved ? { profileId: saved.id } : {}),
+            ...(followUp ? { followUp } : {}),
+          },
+          (event) => dispatch({ type: "event", event }),
+          controller.signal,
+        );
+        dispatch({ type: "settle" });
+        if (saved) {
+          const next = await api.runs(saved.id).catch(() => null);
+          // Another run or a history pick may have taken over while this one was saving.
+          if (next && abort.current === controller) {
+            setRuns(next);
+            // A run that failed before its first Cala result is not saved.
+            setShown(next.find((r) => r.sessionId === sessionId)?.id ?? null);
+          }
+        }
+      } catch (err) {
+        const stopped = controller.signal.aborted;
+        dispatch({
+          type: "fail",
+          message: stopped
+            ? "Stopped. Results so far are kept."
+            : err instanceof Error
+              ? err.message
+              : "Lookup failed",
+        });
+      }
+    },
+    [company.id, company.name, saved, shown],
+  );
 
   useEffect(() => () => abort.current?.abort(), []);
 
@@ -151,15 +171,18 @@ export function WarmPaths() {
     };
   }, [ready, profileId, legacy]);
 
+  /** Shows a saved run. A run that can't be loaded leaves the screen as it is. */
   const open = useCallback(
     async (runId: string) => {
       if (!saved) return;
+      const replay = await api.run(saved.id, runId).catch(() => null);
+      if (!replay) return;
       abort.current?.abort();
+      abort.current = null;
       setShown(runId);
       setSelection(null);
       setExplored(false);
-      const replay = await api.run(saved.id, runId).catch(() => null);
-      if (replay) dispatch({ type: "replay", saved: replay });
+      dispatch({ type: "replay", saved: replay });
     },
     [saved],
   );
@@ -171,6 +194,24 @@ export function WarmPaths() {
 
   const running = run.status === "running";
   const graph = run.graph;
+  const revised = run.followUp;
+  // Every question asked on the way to this answer: its own, then its parents'.
+  const questions = useMemo(() => {
+    const byId = new Map(runs.map((r) => [r.id, r]));
+    const out = revised ? [revised.question] : [];
+    let parent = revised ? byId.get(revised.parent) : undefined;
+    while (parent?.question && out.length < 20) {
+      out.push(parent.question);
+      parent = parent.parent ? byId.get(parent.parent) : undefined;
+    }
+    return out;
+  }, [runs, revised]);
+  // Chips are checked against this answer's data, so they change with every run.
+  const prefs = saved?.prefs;
+  const chips = useMemo(
+    () => (prefs ? suggestions(prefs, run, { asked: questions }) : []),
+    [prefs, run, questions],
+  );
   const [sites, setSites] = useState<Record<string, string>>({});
   const domains = useMemo(
     () => brands(run, company, saved?.facts ?? null, sites),
@@ -319,7 +360,7 @@ export function WarmPaths() {
               <button
                 type="button"
                 className={`btn-primary ${small}`}
-                onClick={start}
+                onClick={() => start()}
                 disabled={!ready || (Boolean(profileId) && !saved)}
               >
                 {run.status === "idle" ? (
@@ -353,6 +394,10 @@ export function WarmPaths() {
             stage={saved?.facts?.stage?.value ?? null}
             prefs={saved?.prefs ?? state.prefs}
           />
+        )}
+
+        {revised && !missing && (
+          <Asked question={revised.question} back={() => void open(revised.parent)} />
         )}
 
         <div className="relative min-h-0 flex-1">
@@ -462,6 +507,10 @@ export function WarmPaths() {
             </div>
           )}
         </div>
+
+        {saved && run.status !== "idle" && (
+          <Ask chips={chips} status={run.status} ask={(question) => void start(question)} />
+        )}
       </div>
     </Shell>
   );
@@ -476,7 +525,21 @@ function when(iso: string): string {
   });
 }
 
-/** Picker for a profile's older runs, newest first. */
+const short = (text: string, max = 36) =>
+  text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+
+/** "14 Nov, 18:20 · ↳ Only Nordic funds · 3 investors" */
+function runLabel(run: RunSummary): string {
+  return [
+    when(run.savedAt),
+    run.question && `↳ ${short(run.question)}`,
+    run.complete ? `${run.picks} ${run.picks === 1 ? "investor" : "investors"}` : "partial",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Picker for a profile's older runs, newest first. Follow-ups show their question. */
 function History({
   runs,
   shown,
@@ -491,13 +554,12 @@ function History({
       aria-label="Run history"
       value={shown ?? ""}
       onChange={(e) => open(e.target.value)}
-      className="ml-1 h-8 max-w-48 rounded-lg border border-line bg-panel px-2 text-[13px] text-dim outline-none transition hover:border-edge"
+      className="ml-1 h-8 max-w-60 rounded-lg border border-line bg-panel px-2 text-[13px] text-dim outline-none transition hover:border-edge"
     >
       {shown === null && <option value="">Live run</option>}
       {runs.map((r) => (
         <option key={r.id} value={r.id}>
-          {when(r.savedAt)}
-          {r.complete ? ` · ${r.picks} leads` : " · partial"}
+          {runLabel(r)}
         </option>
       ))}
     </select>

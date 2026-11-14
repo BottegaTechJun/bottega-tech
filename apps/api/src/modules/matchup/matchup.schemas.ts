@@ -10,6 +10,11 @@ export const agentAnswerSchema = z.object({
       z.object({
         id: z.string().describe("Cala entity id of a suggested investor, from a tool result"),
         why: z.string().describe("One sentence on why this investor fits"),
+        // Tolerant on purpose: a missing list must not fail the run, grounding fills it in.
+        evidence: z
+          .array(z.string())
+          .default([])
+          .describe("One to four source URLs, copied from tool results, that back this pick"),
       }),
     )
     .max(5),
@@ -50,6 +55,11 @@ export const rawLinkSchema = z.looseObject({
       sources: z.array(citeSchema).default([]),
     })
     .nullish(),
+});
+
+/** One source of a knowledge_search answer: `context[].origins[]`. Search results carry no date. */
+export const rawOriginSchema = z.looseObject({
+  document: z.looseObject({ url: z.string() }),
 });
 
 export const rawRetrievalSchema = z.looseObject({

@@ -12,6 +12,9 @@ Founder onboarding (Next.js App Router, Tailwind v4, port 3001). Talks only to `
 5. **Warm paths**: canvas of the matchup agent's answer (`components/canvas/`), live SSE trace in a
    collapsible side panel. `/warm-paths?profile=<id>` opens a saved profile on its latest finished
    run, with a picker for older runs; "Run again" sends the `profileId`.
+6. **Follow-ups**: under a finished profile run, the composer (`components/canvas/ask.tsx`) sends a
+   question plus the run on screen as `followUp.parent`. The answer is a new run: the list shows the
+   question with "Back to previous answer", and the run picker labels it `↳ question`.
 
 The sidebar lists saved profiles (`components/profiles.tsx`). Picking one makes it current.
 
