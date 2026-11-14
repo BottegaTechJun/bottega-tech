@@ -12,7 +12,7 @@ export const agentAnswerSchema = z.object({
         why: z.string().describe("One sentence on why this investor fits"),
       }),
     )
-    .max(5),
+    .max(10),
   connections: z.array(
     z.object({
       from: z.string().describe("Cala entity id"),

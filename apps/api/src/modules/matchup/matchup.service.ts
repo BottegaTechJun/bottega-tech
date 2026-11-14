@@ -18,7 +18,7 @@ const SLUSH_2026 = "bc844d56-6ab4-452b-96bf-2661e86e592b";
 const INSTRUCTIONS = `You match a startup with investors for its next round, using only Cala's knowledge graph tools.
 Start from the company's funding rounds and current investors. Follow those investors' other rounds to find funds that led later rounds (Series A and up) of similar companies, and how they connect to the company's investors: shared rounds, co-investments, people, events (Slush 2026 is ${SLUSH_2026}).
 When founder-provided company context is present, the company may not exist in Cala. Do not try to retrieve its synthetic id. Use the founder's context to frame the search, and use any selected similar-company ids as the Cala-grounded analogues.
-Rules: use only ids and source URLs that appear in tool results. A missing is_lead means unknown, never "did not lead". State what happened, never predict intent. Suggest at most 5 investors.
+Rules: use only ids and source URLs that appear in tool results. A missing is_lead means unknown, never "did not lead". State what happened, never predict intent. Suggest at most 10 investors.
 Work fast: about 10 to 15 tool calls, several at once when they don't depend on each other. Then call ${ANSWER} once with your answer.`;
 
 const MAX_EVENT_ITEMS = 60;
