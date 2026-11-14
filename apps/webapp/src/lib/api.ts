@@ -2,8 +2,11 @@ import {
   apiErrorSchema,
   type CompanyMatches,
   companyMatchesSchema,
+  type FounderPreferencesState,
+  founderPreferencesStateSchema,
   type Profile,
   profileSchema,
+  type UpsertFounderPreferences,
 } from "@repo/shared";
 import type { z } from "zod";
 
@@ -24,12 +27,14 @@ export class ApiError extends Error {
 async function request<Schema extends z.ZodType>(
   schema: Schema,
   path: string,
-  signal?: AbortSignal,
+  init?: RequestInit,
 ): Promise<z.infer<Schema>> {
   const timeout = AbortSignal.timeout(TIMEOUT);
+  const signal = init?.signal;
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
+      ...init,
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch (err) {
@@ -57,11 +62,9 @@ const profiles = new Map<string, Promise<Profile>>();
 
 export const api = {
   companies: (name: string, signal?: AbortSignal): Promise<CompanyMatches> =>
-    request(
-      companyMatchesSchema,
-      `/api/onboarding/companies?${new URLSearchParams({ name })}`,
+    request(companyMatchesSchema, `/api/onboarding/companies?${new URLSearchParams({ name })}`, {
       signal,
-    ),
+    }),
 
   /** Memoized so hovering a result can warm the profile before the click. */
   profile(id: string): Promise<Profile> {
@@ -71,5 +74,24 @@ export const api = {
     profiles.set(id, next);
     next.catch(() => profiles.delete(id));
     return next;
+  },
+
+  getPreferences(id: string): Promise<FounderPreferencesState> {
+    return request(
+      founderPreferencesStateSchema,
+      `/api/onboarding/companies/${encodeURIComponent(id)}/preferences`,
+    );
+  },
+
+  savePreferences(id: string, payload: UpsertFounderPreferences): Promise<FounderPreferencesState> {
+    return request(
+      founderPreferencesStateSchema,
+      `/api/onboarding/companies/${encodeURIComponent(id)}/preferences`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
   },
 };

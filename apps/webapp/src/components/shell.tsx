@@ -1,5 +1,6 @@
 import { BookOpen, Compass, Network, Rocket } from "lucide-react";
 import Link from "next/link";
+import { UserMenu } from "./user-menu";
 
 interface Props {
   active: "start" | "paths";
@@ -47,6 +48,7 @@ export function Shell({ active, company, aside, children }: Props) {
 
         <div className="mt-auto flex flex-col gap-3">
           {company}
+          <UserMenu />
           <a
             href="https://cala.ai"
             target="_blank"
@@ -76,6 +78,9 @@ export function Shell({ active, company, aside, children }: Props) {
               {label}
             </Link>
           ))}
+          <div className="ml-auto">
+            <UserMenu compact />
+          </div>
         </nav>
         <div className="flex min-w-0">
           <div className="min-h-[100dvh] min-w-0 flex-1 bg-panel md:min-h-[calc(100dvh-1rem)] md:overflow-hidden md:rounded-[20px] md:border md:border-line">
