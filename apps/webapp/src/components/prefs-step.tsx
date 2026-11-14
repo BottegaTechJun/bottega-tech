@@ -6,6 +6,8 @@ import { type Prefs, questions } from "@/lib/prefs";
 
 interface Props {
   prefs: Prefs;
+  /** Question to open on, e.g. the first unanswered one after a reload */
+  start?: number;
   change: (prefs: Prefs) => void;
   finish: () => void;
   exit: () => void;
@@ -14,8 +16,8 @@ interface Props {
 const DELAY = 3000;
 
 /** One short question at a time. Single choice advances on its own after a short pause. */
-export function PrefsStep({ prefs, change, finish, exit }: Props) {
-  const [index, setIndex] = useState(0);
+export function PrefsStep({ prefs, start = 0, change, finish, exit }: Props) {
+  const [index, setIndex] = useState(start);
   // Bumped on every single-choice tap; restarts the auto-advance timer.
   const [armed, setArmed] = useState<number | null>(null);
   const last = index === questions.length - 1;

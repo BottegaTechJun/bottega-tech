@@ -18,7 +18,7 @@ export default function WarmPaths() {
         </div>
         <Link href="/" className="btn-ghost">
           <ArrowLeft className="size-4" />
-          Back to setup
+          Back home
         </Link>
       </div>
     </Shell>

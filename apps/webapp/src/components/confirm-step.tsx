@@ -42,10 +42,15 @@ export function ConfirmStep({ company, confirm, back }: Props) {
     return (
       <div className="card mx-auto flex max-w-md flex-col items-center gap-4 px-6 py-10 text-center">
         <p className="text-sm text-dim">{load.message}</p>
-        <button type="button" className="btn-ghost" onClick={fetchProfile}>
-          <RotateCcw className="size-4" />
-          Retry
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className="btn-ghost" onClick={back}>
+            Pick another
+          </button>
+          <button type="button" className="btn-primary" onClick={fetchProfile}>
+            <RotateCcw className="size-4" />
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -233,7 +238,7 @@ function Fact({
   );
 }
 
-function SlushPill({ profile }: { profile: Profile }) {
+export function SlushPill({ profile }: { profile: Profile }) {
   if (!profile.slush.listed) {
     return (
       <span className="inline-flex h-9 items-center gap-2 rounded-full border border-dashed border-line px-4 text-sm text-faint">

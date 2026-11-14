@@ -1,5 +1,10 @@
+import { Suspense } from "react";
 import { Onboarding } from "@/components/onboarding";
 
 export default function Page() {
-  return <Onboarding />;
+  return (
+    <Suspense>
+      <Onboarding />
+    </Suspense>
+  );
 }

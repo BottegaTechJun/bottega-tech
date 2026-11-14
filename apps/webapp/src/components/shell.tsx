@@ -11,7 +11,7 @@ interface Props {
 /** Cala-console style frame: dark sidebar on the left, rounded inset panel for content. */
 export function Shell({ active, company, children }: Props) {
   const items = [
-    { id: "start", href: "/", label: "Get started", icon: Rocket },
+    { id: "start", href: "/", label: "Home", icon: Rocket },
     { id: "paths", href: "/warm-paths", label: "Warm paths", icon: Network },
   ] as const;
 
@@ -58,6 +58,23 @@ export function Shell({ active, company, children }: Props) {
       </aside>
 
       <main className="min-w-0 flex-1 md:py-2 md:pr-2">
+        <nav className="sticky top-0 z-20 flex h-14 items-center gap-1 border-b border-line bg-ink/90 px-4 backdrop-blur md:hidden">
+          <Link href="/" aria-label="Bottega" className="mr-2">
+            <span className="grid size-7 place-items-center rounded-lg bg-text font-mono text-sm font-semibold text-ink">
+              B
+            </span>
+          </Link>
+          {items.map(({ id, href, label }) => (
+            <Link
+              key={id}
+              href={href}
+              aria-current={active === id ? "page" : undefined}
+              className="flex h-8 items-center rounded-full px-3 text-sm text-dim transition hover:text-text aria-[current=page]:bg-raise aria-[current=page]:text-text"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
         <div className="min-h-[100dvh] bg-panel md:min-h-[calc(100dvh-1rem)] md:rounded-[20px] md:border md:border-line">
           {children}
         </div>
