@@ -1,6 +1,8 @@
 import type { z } from "zod";
+import { type Cache, createCache } from "../../lib/cache";
 import { HttpError } from "../../lib/http-error";
 import {
+  calaEntityIntrospectionResponseSchema,
   calaEntityResponseSchema,
   calaEntitySearchResponseSchema,
   calaErrorResponseSchema,
@@ -17,14 +19,38 @@ export interface CalaClientOptions {
   maxRetries?: number;
   /** First backoff delay; doubles on every retry. */
   retryBaseMs?: number;
+  /** Optional Aiven Valkey URL for caching Cala responses by SHA-256 hash. */
+  valkeyUrl?: string;
+  /** Optional pre-configured cache instance (Valkey + in-memory fallback). */
+  cache?: Cache;
   /** Injectable for tests. */
   fetch?: (url: URL, init: RequestInit) => Promise<Response>;
+}
+
+export interface CalaEntitySearchOptions {
+  limit?: number;
+  entityTypes?: string[];
+  entity_types?: string[];
+}
+
+export interface CalaRelationshipProjection {
+  limit?: number;
+  offset?: number;
+}
+
+export interface CalaEntityRetrievalProjection {
+  properties?: string[];
+  relationships?: {
+    outgoing?: Record<string, CalaRelationshipProjection>;
+    incoming?: Record<string, CalaRelationshipProjection>;
+  };
+  numerical_observations?: Record<string, string[]>;
 }
 
 interface RequestOptions {
   method: "GET" | "POST";
   path: string;
-  query?: Record<string, string>;
+  query?: Record<string, string | string[] | undefined>;
   body?: unknown;
 }
 
@@ -38,6 +64,8 @@ export function createCalaClient(options: CalaClientOptions) {
     timeoutMs = 60_000,
     maxRetries = 2,
     retryBaseMs = 500,
+    valkeyUrl,
+    cache = valkeyUrl ? createCache({ valkeyUrl }) : undefined,
     fetch: doFetch = (url, init) => fetch(url, init),
   } = options;
 
@@ -45,9 +73,22 @@ export function createCalaClient(options: CalaClientOptions) {
     schema: Schema,
     { method, path, query, body }: RequestOptions,
   ): Promise<z.infer<Schema>> {
+    const cachePayload = { method, path, query: query ?? {}, body: body ?? null };
+    if (cache) {
+      const cached = await cache.get(schema, cachePayload);
+      if (cached !== null) return cached;
+    }
+
     const url = new URL(path, baseUrl);
     for (const [key, value] of Object.entries(query ?? {})) {
-      url.searchParams.set(key, value);
+      if (value === undefined) continue;
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          url.searchParams.append(key, item);
+        }
+      } else {
+        url.searchParams.set(key, value);
+      }
     }
 
     for (let attempt = 0; ; attempt++) {
@@ -86,8 +127,42 @@ export function createCalaClient(options: CalaClientOptions) {
           "The Cala API returned an unexpected response",
         );
       }
+      if (cache) {
+        await cache.set(cachePayload, parsed.data);
+      }
       return parsed.data;
     }
+  }
+
+  function entitySearch(name: string, optionsOrLimit?: number | CalaEntitySearchOptions) {
+    const opts: CalaEntitySearchOptions =
+      typeof optionsOrLimit === "number" ? { limit: optionsOrLimit } : (optionsOrLimit ?? {});
+    const entityTypes = opts.entityTypes ?? opts.entity_types;
+
+    return request(calaEntitySearchResponseSchema, {
+      method: "GET",
+      path: "/v1/entities",
+      query: {
+        name,
+        ...(opts.limit !== undefined ? { limit: String(opts.limit) } : {}),
+        ...(entityTypes && entityTypes.length > 0 ? { entity_types: entityTypes } : {}),
+      },
+    });
+  }
+
+  function entityIntrospection(id: string) {
+    return request(calaEntityIntrospectionResponseSchema, {
+      method: "GET",
+      path: `/v1/entities/${encodeURIComponent(id)}/introspection`,
+    });
+  }
+
+  function entityRetrieval(id: string, projection?: CalaEntityRetrievalProjection) {
+    return request(calaEntityResponseSchema, {
+      method: "POST",
+      path: `/v1/entities/${encodeURIComponent(id)}`,
+      body: projection ?? {},
+    });
   }
 
   return {
@@ -105,19 +180,14 @@ export function createCalaClient(options: CalaClientOptions) {
         body: { input, return_entities: true },
       }),
 
-    searchEntities: (name: string, limit: number) =>
-      request(calaEntitySearchResponseSchema, {
-        method: "GET",
-        path: "/v1/entities",
-        query: { name, limit: String(limit) },
-      }),
+    entity_search: entitySearch,
+    searchEntities: entitySearch,
 
-    getEntity: (id: string) =>
-      request(calaEntityResponseSchema, {
-        method: "POST",
-        path: `/v1/entities/${encodeURIComponent(id)}`,
-        body: {},
-      }),
+    entity_introspection: entityIntrospection,
+    introspectEntity: entityIntrospection,
+
+    entity_retrieval: entityRetrieval,
+    getEntity: entityRetrieval,
   };
 }
 

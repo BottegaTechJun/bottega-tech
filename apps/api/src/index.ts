@@ -1,11 +1,13 @@
 import { env } from "./config/env";
+import { createCache } from "./lib/cache";
 import { notFound, withMiddleware } from "./lib/http";
 import { createCalaClient } from "./modules/cala/cala.client";
 import { createCalaRoutes } from "./modules/cala/cala.routes";
 import { createCalaService } from "./modules/cala/cala.service";
 import { healthRoutes } from "./modules/health/health.routes";
 
-const calaService = createCalaService(createCalaClient({ apiKey: env.CALA_API_KEY }));
+const cache = createCache({ valkeyUrl: env.VALKEY_URL });
+const calaService = createCalaService(createCalaClient({ apiKey: env.CALA_API_KEY, cache }));
 
 const middleware = { corsOrigin: env.CORS_ORIGIN };
 

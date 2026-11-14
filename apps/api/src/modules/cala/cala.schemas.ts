@@ -63,11 +63,25 @@ export const calaEntitySearchResponseSchema = z.looseObject({
 });
 export type CalaEntitySearchResponse = z.infer<typeof calaEntitySearchResponseSchema>;
 
+/** GET /v1/entities/{entity_id}/introspection */
+export const calaEntityIntrospectionResponseSchema = z.looseObject({
+  properties: z.array(z.string()).default([]),
+  relationships: z
+    .looseObject({
+      outgoing: z.array(z.string()).default([]),
+      incoming: z.array(z.string()).default([]),
+    })
+    .default({ outgoing: [], incoming: [] }),
+  numerical_observations: z.record(z.string(), z.array(z.unknown())).default({}),
+});
+export type CalaEntityIntrospectionResponse = z.infer<typeof calaEntityIntrospectionResponseSchema>;
+
 /** POST /v1/entities/{id} */
 export const calaEntityResponseSchema = z.looseObject({
   id: z.string(),
   name: z.string(),
   entity_type: z.string(),
+  description: z.string().nullish(),
   properties: z.record(z.string(), z.unknown()).default({}),
   relationships: z
     .looseObject({

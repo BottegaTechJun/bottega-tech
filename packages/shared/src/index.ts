@@ -44,8 +44,54 @@ export const sourceSchema = z.object({
   url: z.string(),
   /** The specific document the fact came from */
   document: z.object({ name: z.string(), url: z.string() }),
+  /** Optional reliability / priority rank of the source */
+  source_rank: z.number().optional(),
 });
 export type Source = z.infer<typeof sourceSchema>;
+
+// ---------- Graph (Nodes, Edges, Provenance) ----------
+
+export const graphSourceSchema = z.object({
+  name: z.string(),
+  url: z.string().optional(),
+  document: z.union([z.string(), z.object({ name: z.string(), url: z.string() })]).optional(),
+  date: z.string().optional(),
+  source_rank: z.number().optional(),
+});
+export type GraphSource = z.infer<typeof graphSourceSchema>;
+
+export const graphNodeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  entityType: z.string(),
+  entity_type: z.string().optional(),
+  description: z.string().nullable().optional(),
+  properties: z.record(z.string(), z.unknown()).optional(),
+  metrics: z.array(z.unknown()).optional(),
+  sources: z.array(graphSourceSchema).optional(),
+});
+export type GraphNode = z.infer<typeof graphNodeSchema>;
+
+export const graphEdgeSchema = z.object({
+  id: z.string().optional(),
+  source: z.string(),
+  target: z.string(),
+  type: z.string(),
+  direction: z.enum(["incoming", "outgoing"]).optional(),
+  is_lead: z.boolean().nullable().optional(),
+  role: z.string().nullable().optional(),
+  valid_since: z.string().nullable().optional(),
+  valid_until: z.string().nullable().optional(),
+  properties: z.record(z.string(), z.unknown()).optional(),
+  sources: z.array(graphSourceSchema).optional(),
+});
+export type GraphEdge = z.infer<typeof graphEdgeSchema>;
+
+export const graphDataSchema = z.object({
+  nodes: z.array(graphNodeSchema),
+  edges: z.array(graphEdgeSchema),
+});
+export type GraphData = z.infer<typeof graphDataSchema>;
 
 export const searchResponseSchema = z.object({
   /** Markdown answer */
