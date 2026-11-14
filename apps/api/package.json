@@ -8,7 +8,8 @@
     "start": "bun src/index.ts",
     "build": "bun build src/index.ts --target bun --outdir dist",
     "typecheck": "tsc --noEmit",
-    "snapshot": "bun src/modules/onboarding/snapshot.ts"
+    "snapshot": "bun src/modules/onboarding/snapshot.ts",
+    "db:migrate": "bun src/db/migrate.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.121",

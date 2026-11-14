@@ -3,6 +3,8 @@ import {
   brandsResponseSchema,
   type CompanyMatches,
   companyMatchesSchema,
+  type FounderPreferencesState,
+  founderPreferencesStateSchema,
   type MatchupReplay,
   matchupReplaySchema,
   type Profile,
@@ -14,6 +16,7 @@ import {
   runListSchema,
   type SavedProfile,
   savedProfileSchema,
+  type UpsertFounderPreferences,
 } from "@repo/shared";
 import { z } from "zod";
 
@@ -125,6 +128,21 @@ export const api = {
       matchupReplaySchema,
       `/api/profiles/${encodeURIComponent(id)}/runs/${encodeURIComponent(run)}`,
     ),
+
+  getPreferences(id: string): Promise<FounderPreferencesState> {
+    return request(
+      founderPreferencesStateSchema,
+      `/api/onboarding/companies/${encodeURIComponent(id)}/preferences`,
+    );
+  },
+
+  savePreferences(id: string, payload: UpsertFounderPreferences): Promise<FounderPreferencesState> {
+    return request(
+      founderPreferencesStateSchema,
+      `/api/onboarding/companies/${encodeURIComponent(id)}/preferences`,
+      { method: "PUT", body: payload },
+    );
+  },
 };
 
 /** Tells every mounted profile list to reload, e.g. after a save or delete. */

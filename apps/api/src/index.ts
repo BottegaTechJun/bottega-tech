@@ -1,6 +1,7 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { env } from "./config/env";
 import { createCache } from "./lib/cache";
+import { createDatabase } from "./lib/db";
 import { notFound, withMiddleware } from "./lib/http";
 import { startTelemetry } from "./lib/telemetry";
 import { createBrandsRoutes } from "./modules/brands/brands.routes";
@@ -10,12 +11,18 @@ import { healthRoutes } from "./modules/health/health.routes";
 import { createCalaTools } from "./modules/matchup/matchup.agent";
 import { createMatchupRoutes } from "./modules/matchup/matchup.routes";
 import { createMatchupService } from "./modules/matchup/matchup.service";
-import { createFileRunStore } from "./modules/matchup/matchup.store";
+import { createDatabaseRunStore, createFileRunStore } from "./modules/matchup/matchup.store";
 import demo from "./modules/onboarding/fixtures/demo.json";
 import { createOnboardingRoutes } from "./modules/onboarding/onboarding.routes";
 import { createOnboardingService } from "./modules/onboarding/onboarding.service";
 import { createProfileRoutes } from "./modules/profiles/profiles.routes";
 import { createProfileService } from "./modules/profiles/profiles.service";
+
+/** Shared Aiven Postgres client (auto-migrates schema when DATABASE_URL is configured). */
+const db = createDatabase(env.DATABASE_URL);
+if (db) {
+  db.migrate().catch((err) => console.error("Database migration failed:", err));
+}
 
 /** Shared Cala client (timeout, 429 retry, Valkey cache). Pass it into each feature's service. */
 const cala = createCalaClient({
@@ -23,7 +30,7 @@ const cala = createCalaClient({
   cache: createCache({ valkeyUrl: env.VALKEY_URL }),
 });
 
-const onboarding = createOnboardingService(cala, { snapshot: demo });
+const onboarding = createOnboardingService(cala, { snapshot: demo, db });
 const brands = createBrandsService(cala);
 
 // Saved profiles and their runs (apps/api/data/profiles, gitignored).
@@ -37,6 +44,9 @@ const telemetry = startTelemetry({
   projectId: env.LANGFUSE_PROJECT_ID,
 });
 
+const fileStore = createFileRunStore(`${import.meta.dir}/../.runs`);
+const runStore = createDatabaseRunStore(db, fileStore);
+
 const matchup = env.GEMINI_API_KEY
   ? createMatchupService({
       model: createGoogleGenerativeAI({ apiKey: env.GEMINI_API_KEY })(env.MATCHUP_MODEL),
@@ -45,8 +55,8 @@ const matchup = env.GEMINI_API_KEY
       maxSteps: env.MATCHUP_MAX_STEPS,
       sessionUrl: telemetry.sessionUrl,
       after: telemetry.flush,
-      // Last run per company, replayed by the board (apps/api/.runs, gitignored).
-      store: createFileRunStore(`${import.meta.dir}/../.runs`),
+      // Last run per company, saved to Aiven Postgres + local .runs fallback.
+      store: runStore,
       profiles,
     })
   : null;
@@ -73,5 +83,5 @@ const server = Bun.serve({
 
 console.log(`API listening on ${server.url}`);
 console.log(
-  `Matchup agent: ${matchup ? env.MATCHUP_MODEL : "off (no GEMINI_API_KEY)"} · Langfuse: ${telemetry.enabled ? "on" : "off"}`,
+  `Database: ${db ? "on (Aiven Postgres)" : "off"} · Matchup agent: ${matchup ? env.MATCHUP_MODEL : "off (no GEMINI_API_KEY)"} · Langfuse: ${telemetry.enabled ? "on" : "off"}`,
 );

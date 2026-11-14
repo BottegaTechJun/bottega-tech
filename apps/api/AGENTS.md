@@ -14,6 +14,9 @@ src/
     http.ts           Routes type, request validation (parseJson/parseQuery/parse),
                       middleware (CORS, error handling, request logging)
     cache.ts          two-tier cache (in-memory + optional Valkey) keyed by SHA-256
+    db.ts             Aiven Postgres client (Bun SQL) + relational schema & repositories
+  db/
+    migrate.ts        applies schema migration and seeds demo company into Postgres
   modules/
     health/           GET /health
     cala/             Cala integration only, no routes of its own
@@ -24,17 +27,19 @@ src/
 
 ## Endpoints
 
-| Ours                                  | Notes                                       |
-| ------------------------------------- | ------------------------------------------- |
-| `GET /health`                         | `{ status: "ok" }` (`HealthResponse`)       |
-| `GET /api/onboarding/companies?name=` | Company search (entity search + retrieval)  |
-| `GET /api/onboarding/companies/:id`   | Sourced profile (introspection + retrieval) |
-| `POST /api/matchup`                   | Investor matchup agent, streamed over SSE   |
-| `GET /api/matchup/:id/last`           | Last saved matchup run for a company        |
-| `GET/POST /api/profiles`              | List (no facts) / create a saved profile    |
-| `GET/PUT/DELETE /api/profiles/:id`    | One profile; DELETE also removes its runs   |
-| `GET /api/profiles/:id/runs`          | Run summaries, newest first                 |
-| `GET /api/profiles/:id/runs/:run`     | One saved run, replayed by the board        |
+| Ours                                            | Notes                                       |
+| ----------------------------------------------- | ------------------------------------------- |
+| `GET /health`                                   | `{ status: "ok" }` (`HealthResponse`)       |
+| `GET /api/onboarding/companies?name=`           | Company search (entity search + retrieval)  |
+| `GET /api/onboarding/companies/:id`             | Sourced profile (introspection + retrieval) |
+| `GET /api/onboarding/companies/:id/preferences` | Saved founder onboarding preferences        |
+| `PUT /api/onboarding/companies/:id/preferences` | Upsert founder onboarding preferences       |
+| `POST /api/matchup`                             | Investor matchup agent, streamed over SSE   |
+| `GET /api/matchup/:id/last`                     | Last saved matchup run for a company        |
+| `GET/POST /api/profiles`                        | List (no facts) / create a saved profile    |
+| `GET/PUT/DELETE /api/profiles/:id`              | One profile; DELETE also removes its runs   |
+| `GET /api/profiles/:id/runs`                    | Run summaries, newest first                 |
+| `GET /api/profiles/:id/runs/:run`               | One saved run, replayed by the board        |
 
 ## Notes
 
