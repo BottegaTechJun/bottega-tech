@@ -8,6 +8,7 @@ import {
 } from "@repo/shared";
 import { jsonSchema, simulateReadableStream, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import { patient } from "./matchup.agent";
 import {
   backing,
   createLedger,
@@ -674,13 +675,74 @@ describe("evidence", () => {
   });
 });
 
+describe("patient", () => {
+  const busy = {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: "Error calling tool 'entity_introspection': HTTP error 429: Too Many Requests",
+      },
+    ],
+  };
+  const context = { toolCallId: "t", messages: [], context: {} };
+
+  /** One Cala tool that answers with `results` in turn, wrapped with no real waiting. */
+  function wrapped(results: unknown[]) {
+    let calls = 0;
+    const waits: number[] = [];
+    const tools = patient(
+      {
+        entity_introspection: tool({
+          inputSchema: jsonSchema<{ entity_id: string }>({ type: "object" }),
+          execute: async () => {
+            const next = results[Math.min(calls++, results.length - 1)];
+            if (next instanceof Error) throw next;
+            return next;
+          },
+        }),
+      },
+      {
+        delays: [10, 20],
+        sleep: async (ms) => {
+          waits.push(ms);
+        },
+      },
+    );
+    const run = () => tools.entity_introspection?.execute?.({ entity_id: ROUND }, context);
+    return { run, waits, calls: () => calls };
+  }
+
+  test("retries a call Cala turned away for being busy", async () => {
+    const limited = wrapped([busy, new Error("HTTP error 503: unavailable"), retrieval]);
+    expect(await limited.run()).toBe(retrieval);
+    expect(limited.calls()).toBe(3);
+    expect(limited.waits).toHaveLength(2);
+  });
+
+  test("gives up after the last try and passes the failure on", async () => {
+    const down = wrapped([busy]);
+    expect(await down.run()).toBe(busy);
+    expect(down.calls()).toBe(3);
+  });
+
+  test("does not retry a call that was simply wrong", async () => {
+    const wrong = { isError: true, content: [{ type: "text", text: "HTTP error 404: Not found" }] };
+    const missing = wrapped([wrong, retrieval]);
+    expect(await missing.run()).toBe(wrong);
+    expect(missing.calls()).toBe(1);
+    expect(missing.waits).toEqual([]);
+  });
+});
+
 describe("instructions", () => {
   test("give today's date, the evidence rule and Cala's field names", () => {
     for (const followUp of [true, false]) {
       const text = instructions(followUp, new Date("2026-11-14T10:00:00Z"));
       expect(text).toContain("Today is 2026-11-14.");
       expect(text).toContain("Every suggested investor needs evidence");
-      expect(text).toContain("entity_introspection first");
+      expect(text).toContain("don't call entity_introspection up front");
+      expect(text).toContain("call entity_introspection once for that entity");
       expect(text.includes("This is a follow-up")).toBe(followUp);
     }
   });
