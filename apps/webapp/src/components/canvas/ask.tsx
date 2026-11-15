@@ -37,14 +37,16 @@ interface Props {
   /** Follow-ups worth offering for this answer (see `suggestions` in lib/suggest.ts) */
   chips: string[];
   status: Status;
+  /** The answer on screen is kept only in this browser, so the API can't follow it up */
+  local?: boolean;
   ask: (question: string) => void;
 }
 
 /** Follow-up composer under the results: the agent revises the answer on screen. */
-export function Ask({ chips, status, ask }: Props) {
+export function Ask({ chips, status, local = false, ask }: Props) {
   const [text, setText] = useState("");
   const question = text.trim();
-  const ready = status === "done";
+  const ready = status === "done" && !local;
   const send = (q: string) => {
     if (!ready || q.length < MIN) return;
     ask(q);
@@ -53,9 +55,11 @@ export function Ask({ chips, status, ask }: Props) {
   const placeholder =
     status === "running"
       ? "The agent is working…"
-      : ready
-        ? "Ask a follow-up about this answer"
-        : "Follow-ups need a finished run. Run again or pick one from the history.";
+      : local
+        ? "This answer is saved only in this browser, so follow-ups are off. Run again to save it."
+        : ready
+          ? "Ask a follow-up about this answer"
+          : "Follow-ups need a finished run. Run again or pick one from the history.";
 
   return (
     <div className="shrink-0 border-t border-line px-4 py-3 md:px-6">

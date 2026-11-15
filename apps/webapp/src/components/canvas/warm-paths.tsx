@@ -1,6 +1,12 @@
 "use client";
 
-import type { Entity, SearchSessionInput, SearchSessionSummary } from "@repo/shared";
+import type {
+  Entity,
+  MatchupEvent,
+  SearchSession,
+  SearchSessionInput,
+  SearchSessionSummary,
+} from "@repo/shared";
 import { ReactFlowProvider } from "@xyflow/react";
 import {
   ArrowLeft,
@@ -16,7 +22,8 @@ import { useSearchParams } from "next/navigation";
 import { signIn, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Shell } from "@/components/shell";
-import { api } from "@/lib/api";
+import { announce, api } from "@/lib/api";
+import { local, toSession } from "@/lib/local";
 import { idle, type Run, reduce, settle, streamMatchup } from "@/lib/matchup";
 import { useProgress } from "@/lib/store";
 import { suggestions } from "@/lib/suggest";
@@ -73,6 +80,22 @@ export function WarmPaths() {
   const [panel, setPanel] = useState(true);
   const [view, setView] = useState<"list" | "graph">("list");
   const abort = useRef<AbortController | null>(null);
+  const userId = authSession?.user?.id ?? null;
+  // Runs change whenever a search is kept locally, so this rechecks then too.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs is the refresh signal
+  const localOnly = useMemo(
+    () => Boolean(userId && shown && local.ids(userId).includes(shown)),
+    [userId, shown, runs],
+  );
+
+  /** A saved search from the API, or from this browser when the API did not keep it. */
+  const find = useCallback(
+    async (id: string): Promise<SearchSession | null> => {
+      const saved = await api.search(id).catch(() => null);
+      return saved ?? (userId ? local.get(userId, id) : null);
+    },
+    [userId],
+  );
 
   /** Runs the agent; with a question, as a follow-up on the run on screen. */
   const start = useCallback(
@@ -86,6 +109,7 @@ export function WarmPaths() {
       const controller = new AbortController();
       abort.current = controller;
       const sessionId = crypto.randomUUID();
+      if (question && localOnly) return;
       const followUp = question && shown ? { question, parent: shown } : null;
       setSelection(null);
       setExplored(false);
@@ -99,9 +123,12 @@ export function WarmPaths() {
           ? { followUp: { question: followUp.question, parent: followUp.parent } }
           : {}),
       });
+      const userId = authSession.user.id;
+      const events: MatchupEvent[] = [];
+      let input: SearchSessionInput | null = null;
       try {
         const facts = context?.facts ?? (await api.profile(company.id).catch(() => null));
-        const input = { company, facts, prefs: context?.prefs ?? state.prefs };
+        input = { company, facts, prefs: context?.prefs ?? state.prefs };
         setContext(input);
         await streamMatchup(
           {
@@ -111,42 +138,39 @@ export function WarmPaths() {
             profile: input,
             ...(followUp ? { followUp } : {}),
           },
-          (event) => dispatch({ type: "event", event }),
+          (event) => {
+            events.push(event);
+            dispatch({ type: "event", event });
+          },
           controller.signal,
         );
         dispatch({ type: "settle" });
-        const next = await api.searches().catch(() => null);
-        // Another run or a history pick may have taken over while this one was saving.
-        if (next && abort.current === controller) {
-          setRuns(next);
-          const saved = next.find((r) => r.id === sessionId);
-          if (saved) {
-            setShown(saved.id);
-            rememberSession(saved.id);
-          }
-        }
       } catch (err) {
         const stopped = controller.signal.aborted;
-        dispatch({
-          type: "fail",
-          message: stopped
-            ? "Stopped. Results so far are kept."
-            : err instanceof Error
-              ? err.message
-              : "Lookup failed",
-        });
-        const next = await api.searches().catch(() => null);
-        if (next && abort.current === controller) {
-          setRuns(next);
-          const saved = next.find((r) => r.id === sessionId);
-          if (saved) {
-            setShown(saved.id);
-            rememberSession(saved.id);
-          }
-        }
+        const text = stopped
+          ? "Stopped. Results so far are kept."
+          : err instanceof Error
+            ? err.message
+            : "Lookup failed";
+        events.push({ type: "error", message: text });
+        dispatch({ type: "fail", message: text });
+      }
+      const next = await api.searches().catch(() => null);
+      // Another run or a history pick may have taken over while this one was saving.
+      if (abort.current !== controller) return;
+      let saved = next?.some((r) => r.id === sessionId) ?? false;
+      // The API did not save it: keep it in this browser so it is not lost.
+      if (!saved && input && events.some((e) => e.type !== "start")) {
+        saved = local.keep(userId, toSession(sessionId, input, events, followUp?.parent ?? null));
+      }
+      setRuns(local.merge(userId, next ?? []));
+      if (saved) {
+        setShown(sessionId);
+        rememberSession(sessionId);
+        announce();
       }
     },
-    [authSession?.user, authStatus, company, context, shown, state.prefs],
+    [authSession?.user, authStatus, company, context, shown, localOnly, state.prefs],
   );
 
   useEffect(() => () => abort.current?.abort(), []);
@@ -167,7 +191,7 @@ export function WarmPaths() {
       };
     }
     (async () => {
-      const session = await api.search(sessionId).catch(() => null);
+      const session = await find(sessionId);
       if (!live) return;
       if (!session) {
         setMissing(true);
@@ -177,13 +201,13 @@ export function WarmPaths() {
       setShown(session.id);
       const list = await api.searches().catch(() => []);
       if (!live) return;
-      setRuns(list);
+      setRuns(userId ? local.merge(userId, list) : list);
       dispatch({ type: "replay", saved: session.replay });
     })();
     return () => {
       live = false;
     };
-  }, [ready, sessionId]);
+  }, [ready, sessionId, find, userId]);
 
   // Fresh from onboarding: start the agent without another click.
   useEffect(() => {
@@ -193,18 +217,21 @@ export function WarmPaths() {
   }, [ready, sessionId, company, start]);
 
   /** Shows a saved run. A run that can't be loaded leaves the screen as it is. */
-  const open = useCallback(async (runId: string) => {
-    const session = await api.search(runId).catch(() => null);
-    if (!session) return;
-    abort.current?.abort();
-    abort.current = null;
-    rememberSession(runId);
-    setShown(runId);
-    setContext(session.input);
-    setSelection(null);
-    setExplored(false);
-    dispatch({ type: "replay", saved: session.replay });
-  }, []);
+  const open = useCallback(
+    async (runId: string) => {
+      const session = await find(runId);
+      if (!session) return;
+      abort.current?.abort();
+      abort.current = null;
+      rememberSession(runId);
+      setShown(runId);
+      setContext(session.input);
+      setSelection(null);
+      setExplored(false);
+      dispatch({ type: "replay", saved: session.replay });
+    },
+    [find],
+  );
 
   const select = useCallback((next: Selection) => {
     setSelection(next);
@@ -549,7 +576,12 @@ export function WarmPaths() {
         </div>
 
         {context && run.status !== "idle" && (
-          <Ask chips={chips} status={run.status} ask={(question) => void start(question)} />
+          <Ask
+            chips={chips}
+            status={run.status}
+            local={localOnly}
+            ask={(question) => void start(question)}
+          />
         )}
       </div>
     </Shell>
