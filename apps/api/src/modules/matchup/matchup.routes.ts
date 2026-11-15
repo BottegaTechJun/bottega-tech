@@ -28,20 +28,25 @@ export function createMatchupRoutes(
 
         const stream = new ReadableStream<Uint8Array>({
           async start(controller) {
-            const ping = setInterval(
-              () => controller.enqueue(encoder.encode(": ping\n\n")),
-              15_000,
-            );
-            await service.run(
-              body,
-              (event) => {
-                if (!stop.signal.aborted) controller.enqueue(frame(event));
-              },
-              stop.signal,
-              userId,
-            );
-            clearInterval(ping);
-            if (!stop.signal.aborted) controller.close();
+            // A write to a stream the client closed throws, and uncaught it kills the server.
+            const send = (chunk: Uint8Array) => {
+              if (stop.signal.aborted) return;
+              try {
+                controller.enqueue(chunk);
+              } catch {}
+            };
+            const ping = setInterval(() => send(encoder.encode(": ping\n\n")), 15_000);
+            stop.signal.addEventListener("abort", () => clearInterval(ping));
+            try {
+              await service.run(body, (event) => send(frame(event)), stop.signal, userId);
+            } catch (err) {
+              console.error("Matchup stream failed:", err);
+            } finally {
+              clearInterval(ping);
+              try {
+                if (!stop.signal.aborted) controller.close();
+              } catch {}
+            }
           },
           cancel() {
             stop.abort();
