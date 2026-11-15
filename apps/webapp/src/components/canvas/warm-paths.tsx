@@ -81,6 +81,12 @@ export function WarmPaths() {
   const [view, setView] = useState<"list" | "graph">("list");
   const abort = useRef<AbortController | null>(null);
   const userId = authSession?.user?.id ?? null;
+  // Runs change whenever a search is kept locally, so this rechecks then too.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs is the refresh signal
+  const localOnly = useMemo(
+    () => Boolean(userId && shown && local.ids(userId).includes(shown)),
+    [userId, shown, runs],
+  );
 
   /** A saved search from the API, or from this browser when the API did not keep it. */
   const find = useCallback(
@@ -103,6 +109,7 @@ export function WarmPaths() {
       const controller = new AbortController();
       abort.current = controller;
       const sessionId = crypto.randomUUID();
+      if (question && localOnly) return;
       const followUp = question && shown ? { question, parent: shown } : null;
       setSelection(null);
       setExplored(false);
@@ -163,7 +170,7 @@ export function WarmPaths() {
         announce();
       }
     },
-    [authSession?.user, authStatus, company, context, shown, state.prefs],
+    [authSession?.user, authStatus, company, context, shown, localOnly, state.prefs],
   );
 
   useEffect(() => () => abort.current?.abort(), []);
@@ -569,7 +576,12 @@ export function WarmPaths() {
         </div>
 
         {context && run.status !== "idle" && (
-          <Ask chips={chips} status={run.status} ask={(question) => void start(question)} />
+          <Ask
+            chips={chips}
+            status={run.status}
+            local={localOnly}
+            ask={(question) => void start(question)}
+          />
         )}
       </div>
     </Shell>
