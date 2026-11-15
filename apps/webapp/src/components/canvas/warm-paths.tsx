@@ -78,6 +78,8 @@ export function WarmPaths() {
   const [selection, setSelection] = useState<Selection>(null);
   const [explored, setExplored] = useState(false);
   const [panel, setPanel] = useState(true);
+  // Mobile has no side panel; the trace opens as a full screen sheet instead.
+  const [sheet, setSheet] = useState(false);
   const [view, setView] = useState<"list" | "graph">("list");
   const abort = useRef<AbortController | null>(null);
   const userId = authSession?.user?.id ?? null;
@@ -342,6 +344,11 @@ export function WarmPaths() {
       open={panel}
       wide={Boolean(pick)}
       close={() => setPanel(false)}
+      sheet={sheet || Boolean(selection)}
+      dismiss={() => {
+        setSelection(null);
+        setSheet(false);
+      }}
       title={
         selection ? (
           <button
@@ -395,15 +402,15 @@ export function WarmPaths() {
 
   return (
     <Shell active="paths" profile={shown} aside={aside}>
-      <div className="flex h-[100dvh] flex-col md:h-[calc(100dvh-1rem)]">
-        <header className="flex h-14 shrink-0 items-center gap-2 px-4">
-          <span className="flex shrink-0 items-center gap-2 text-sm font-medium whitespace-nowrap">
+      <div className="flex h-[100dvh] min-w-0 flex-col overflow-x-clip md:h-[calc(100dvh-1rem)]">
+        <header className="flex h-14 min-w-0 shrink-0 items-center gap-2 px-4">
+          <span className="hidden shrink-0 items-center gap-2 text-sm font-medium whitespace-nowrap sm:flex">
             <Network className="size-4 text-accent" strokeWidth={1.75} />
             Warm paths
           </span>
           {runs.length > 1 && !running && <History runs={runs} shown={shown} open={open} />}
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-2">
             {run.status !== "idle" && <Toggle view={view} set={setView} />}
             {view === "graph" && graph && !running && (
               <button
@@ -436,6 +443,19 @@ export function WarmPaths() {
                   <RotateCcw className="size-3.5" />
                 )}
                 {run.status === "idle" ? "Find investors" : "Run again"}
+              </button>
+            )}
+            {run.status !== "idle" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPanel(true);
+                  setSheet(true);
+                }}
+                aria-label="Show agent trace"
+                className="grid size-8 place-items-center rounded-lg text-faint transition hover:bg-raise hover:text-text md:hidden"
+              >
+                <PanelRight className="size-4" />
               </button>
             )}
             {!panel && (
@@ -477,6 +497,7 @@ export function WarmPaths() {
               open={(id) => select({ kind: "node", id })}
               graph={() => setView("graph")}
               meta={<Status run={run} />}
+              panel={panel}
             />
           ) : (
             <>
@@ -628,7 +649,7 @@ function History({
       aria-label="Run history"
       value={shown ?? ""}
       onChange={(e) => open(e.target.value)}
-      className="ml-1 h-8 max-w-60 rounded-lg border border-line bg-panel px-2 text-[13px] text-dim outline-none transition hover:border-edge"
+      className="h-8 min-w-0 flex-1 rounded-lg sm:ml-1 sm:max-w-60 sm:flex-none border border-line bg-panel px-2 text-[13px] text-dim outline-none transition hover:border-edge"
     >
       {shown === null && <option value="">Live run</option>}
       {runs.map((r) => (
@@ -679,13 +700,14 @@ function Toggle({ view, set }: { view: "list" | "graph"; set: (view: "list" | "g
           key={id}
           type="button"
           aria-pressed={view === id}
+          aria-label={label}
           onClick={() => set(id)}
           className={`flex h-full items-center gap-1.5 rounded-full px-3 text-[13px] transition ${
             view === id ? "bg-raise text-text" : "text-faint hover:text-text"
           }`}
         >
           <Icon className="size-3.5" strokeWidth={1.75} />
-          {label}
+          <span className="hidden sm:inline">{label}</span>
         </button>
       ))}
     </fieldset>

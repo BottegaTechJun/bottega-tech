@@ -61,7 +61,7 @@ export function Shell({ active, profile, company, aside, children }: Props) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 md:py-2 md:pr-2">
+      <main className="min-w-0 flex-1 overflow-x-clip md:py-2 md:pr-2">
         <nav className="sticky top-0 z-20 flex h-14 items-center gap-1 border-b border-line bg-ink/90 px-4 backdrop-blur md:hidden">
           <Link href="/" aria-label="Bottega" className="mr-2">
             <BottegaMark className="size-7" />
