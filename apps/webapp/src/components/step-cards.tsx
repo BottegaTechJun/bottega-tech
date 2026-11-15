@@ -47,8 +47,8 @@ export function StepCards({ state, next, open }: Props) {
     },
     {
       id: "done",
-      title: "Warm paths",
-      sub: "Leads your investors know",
+      title: "Leads",
+      sub: "Investors your network can reach",
       span: "md:col-span-2",
       art: <GraphArt />,
     },

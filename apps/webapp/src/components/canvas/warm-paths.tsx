@@ -406,7 +406,7 @@ export function WarmPaths() {
         <header className="flex h-14 min-w-0 shrink-0 items-center gap-2 px-4">
           <span className="hidden shrink-0 items-center gap-2 text-sm font-medium whitespace-nowrap sm:flex">
             <Network className="size-4 text-accent" strokeWidth={1.75} />
-            Warm paths
+            Leads
           </span>
           {runs.length > 1 && !running && <History runs={runs} shown={shown} open={open} />}
 
