@@ -1,4 +1,3 @@
-// API entry point.
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { env } from "./config/env";
 import { createCache } from "./lib/cache";
