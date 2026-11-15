@@ -38,5 +38,5 @@ jobs:
             --min-instances=1 \
             --max-instances=10 \
             --no-cpu-throttling \
-            --timeout=300 \
+            --timeout=3600 \
             --quiet
