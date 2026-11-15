@@ -8,7 +8,7 @@ import {
 } from "@repo/shared";
 import { jsonSchema, simulateReadableStream, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
-import { patient } from "./matchup.agent";
+import { createGate, paced } from "./matchup.agent";
 import {
   backing,
   createLedger,
@@ -675,25 +675,25 @@ describe("evidence", () => {
   });
 });
 
-describe("patient", () => {
+describe("paced Cala tools", () => {
   const busy = {
     isError: true,
     content: [
       {
         type: "text",
-        text: "Error calling tool 'entity_introspection': HTTP error 429: Too Many Requests",
+        text: "Error calling tool 'entity_retrieval': HTTP error 429: Too Many Requests - {'error': 'rate_limit_exceeded'}",
       },
     ],
   };
   const context = { toolCallId: "t", messages: [], context: {} };
 
   /** One Cala tool that answers with `results` in turn, wrapped with no real waiting. */
-  function wrapped(results: unknown[]) {
+  function wrapped(results: unknown[], gate = createGate(3)) {
     let calls = 0;
     const waits: number[] = [];
-    const tools = patient(
+    const tools = paced(
       {
-        entity_introspection: tool({
+        entity_retrieval: tool({
           inputSchema: jsonSchema<{ entity_id: string }>({ type: "object" }),
           execute: async () => {
             const next = results[Math.min(calls++, results.length - 1)];
@@ -703,30 +703,66 @@ describe("patient", () => {
         }),
       },
       {
+        gate,
         delays: [10, 20],
         sleep: async (ms) => {
           waits.push(ms);
         },
       },
     );
-    const run = () => tools.entity_introspection?.execute?.({ entity_id: ROUND }, context);
+    const run = () => tools.entity_retrieval?.execute?.({ entity_id: ROUND }, context);
     return { run, waits, calls: () => calls };
   }
 
-  test("retries a call Cala turned away for being busy", async () => {
+  test("let only a few calls of a burst reach Cala at once", async () => {
+    let active = 0;
+    let peak = 0;
+    const tools = paced(
+      {
+        entity_retrieval: tool({
+          inputSchema: jsonSchema<{ entity_id: string }>({ type: "object" }),
+          execute: async () => {
+            peak = Math.max(peak, ++active);
+            await Bun.sleep(5);
+            active--;
+            return retrieval;
+          },
+        }),
+      },
+      { gate: createGate(3), delays: [], sleep: async () => undefined },
+    );
+    // One agent step of 8 parallel calls, like the one Cala rejected.
+    const burst = Array.from({ length: 8 }, () =>
+      tools.entity_retrieval?.execute?.({ entity_id: ROUND }, context),
+    );
+    expect(await Promise.all(burst)).toEqual(Array(8).fill(retrieval));
+    expect(peak).toBe(3);
+  });
+
+  test("retry a call Cala turned away for being busy", async () => {
     const limited = wrapped([busy, new Error("HTTP error 503: unavailable"), retrieval]);
     expect(await limited.run()).toBe(retrieval);
     expect(limited.calls()).toBe(3);
-    expect(limited.waits).toHaveLength(2);
   });
 
-  test("gives up after the last try and passes the failure on", async () => {
+  test("hold every call, not only the failed one, after Cala says it is busy", async () => {
+    const gate = createGate(3);
+    const limited = wrapped([busy, retrieval], gate);
+    await limited.run();
+    // The pause is shared: a call that never failed must still wait it out.
+    expect(gate.wait()).toBeGreaterThan(0);
+    const other = wrapped([retrieval], gate);
+    await other.run();
+    expect(other.waits[0]).toBeGreaterThan(0);
+  });
+
+  test("pass the failure on after the last try", async () => {
     const down = wrapped([busy]);
     expect(await down.run()).toBe(busy);
     expect(down.calls()).toBe(3);
   });
 
-  test("does not retry a call that was simply wrong", async () => {
+  test("never retry a call that was simply wrong", async () => {
     const wrong = { isError: true, content: [{ type: "text", text: "HTTP error 404: Not found" }] };
     const missing = wrapped([wrong, retrieval]);
     expect(await missing.run()).toBe(wrong);
