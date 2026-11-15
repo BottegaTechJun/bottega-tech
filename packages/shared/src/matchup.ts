@@ -150,10 +150,6 @@ export const matchupEventSchema = z.discriminatedUnion("type", [
 ]);
 export type MatchupEvent = z.infer<typeof matchupEventSchema>;
 
-/** `POST /api/matchup` answer: the background run to read events from. */
-export const matchupStartedSchema = z.object({ runId: z.string() });
-export type MatchupStarted = z.infer<typeof matchupStartedSchema>;
-
 /** The last saved run for a company, replayed instead of running the agent again. */
 export const matchupReplaySchema = z.object({
   complete: z.boolean(),
