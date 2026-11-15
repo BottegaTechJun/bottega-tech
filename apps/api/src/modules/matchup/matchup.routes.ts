@@ -10,6 +10,11 @@ function frame(event: MatchupEvent): Uint8Array {
   return encoder.encode(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
+// Tool results reach the browser without their entities and facts; the saved run keeps them.
+function slim(event: MatchupEvent): MatchupEvent {
+  return event.type === "tool-result" ? { ...event, entities: [], facts: [] } : event;
+}
+
 /** `service` is null when GEMINI_API_KEY is missing; the route then answers 503. */
 export function createMatchupRoutes(
   service: MatchupService | null,
@@ -38,7 +43,7 @@ export function createMatchupRoutes(
             const ping = setInterval(() => send(encoder.encode(": ping\n\n")), 15_000);
             stop.signal.addEventListener("abort", () => clearInterval(ping));
             try {
-              await service.run(body, (event) => send(frame(event)), stop.signal, userId);
+              await service.run(body, (event) => send(frame(slim(event))), stop.signal, userId);
             } catch (err) {
               console.error("Matchup stream failed:", err);
             } finally {
