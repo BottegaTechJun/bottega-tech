@@ -221,6 +221,12 @@ function Line({ item }: { item: TraceItem }) {
       </TraceCollapsibleTrigger>
       <TraceCollapsibleContent>
         <div className="flex flex-col gap-1 py-1.5">
+          {/* The title is one truncated line; a failure's full message goes here. */}
+          {failed && item.result && (
+            <p className="break-words text-[12px] leading-relaxed text-red-300">
+              {item.result.summary}
+            </p>
+          )}
           <span className="font-mono text-[11px] text-faint">{item.tool}</span>
           <code className="break-all font-mono text-[11px] leading-relaxed text-dim">
             {item.input || "No input"}

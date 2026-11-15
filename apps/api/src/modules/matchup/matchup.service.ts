@@ -38,13 +38,18 @@ const ROLE = `You match a startup with investors for its next round, using only 
 
 const RULES = `Rules: use only ids and source URLs that appear in tool results. Every suggested investor needs evidence: copy at least one source URL from a tool result that shows its activity, and leave out any investor without one. Search results carry no dates, so when an answer depends on how recent something is, use a dated funding round or event record (entity_retrieval) and cite its source. A missing is_lead means unknown, never "did not lead". State what happened, never predict intent. Suggest at most 5 investors.`;
 
-const CALA = `Cala read discipline: for every new entity UUID, call entity_introspection first. Use its response as the source of truth for available properties, relationship names, and incoming/outgoing direction. Then call entity_retrieval with only the exact fields and relationships that introspection returned; never guess a relationship or reverse its direction. Introspect independent entities in parallel and reuse any entity already seen. Useful relationships, when introspection confirms them, include PARTICIPATES_IN_FUNDING_ROUND, INVESTED_IN, HAS_HEADQUARTERS_IN, OPERATES_IN_INDUSTRY, PARTICIPATES_IN_EVENT, FOUNDED, IS_CEO_OF, IS_BOARD_MEMBER_OF and WORKS_AT. A funding round may expose round_label, announcement_date and transaction_value. Omit fields that are not available.`;
+/**
+ * Field names and directions, so the agent doesn't spend a third of its calls (and Cala's rate
+ * limit) on entity_introspection. A wrong name or direction comes back empty, not as an error,
+ * so the directions are spelled out and introspection stays as the fallback.
+ */
+const CALA = `Cala read discipline: don't call entity_introspection up front. Go straight to entity_retrieval with these relationships, in exactly these directions. An investor or a company: outgoing PARTICIPATES_IN_FUNDING_ROUND (role INVESTOR or ISSUER, is_lead, dated sources; pass a limit of about 30), INVESTED_IN, HAS_HEADQUARTERS_IN, OPERATES_IN_INDUSTRY and PARTICIPATES_IN_EVENT; incoming INVESTED_IN, FOUNDED, IS_CEO_OF, IS_BOARD_MEMBER_OF and WORKS_AT. A funding round: properties round_label, announcement_date and transaction_value; incoming PARTICIPATES_IN_FUNDING_ROUND for everyone in it. A person: outgoing FOUNDED, WORKS_AT and IS_BOARD_MEMBER_OF. A wrong name or direction returns nothing instead of an error, so if a relationship you expected comes back empty, call entity_introspection once for that entity and retry with what it lists. Leave properties out unless you need one. Reuse any entity already seen and never search for one whose id you have.`;
 
 const FIRST_RUN = `Start from the company's funding rounds and current investors. Follow those investors' other rounds to find funds that led later rounds (Series A and up) of similar companies, and how they connect to the company's investors: shared rounds, co-investments, people, events (Slush 2026 is ${SLUSH_2026}).
 When the company says what it wants next, prefer investors that fit it.
 ${RULES}
 ${CALA}
-Work fast: introspect independent seeds in parallel, then make about 10 to 15 total tool calls. Call ${ANSWER} once with your answer as soon as the evidence is sufficient.`;
+Work fast: read independent entities in parallel, about 10 to 15 tool calls in total. Call ${ANSWER} once with your answer as soon as the evidence is sufficient.`;
 
 const FOLLOW_UP = `This is a follow-up. You already answered, and the founder now asks a question about that answer. Don't start over: revise the previous answer so it answers the question.
 The prompt lists each suggested investor with the rounds and sources already on record. Everything the previous run saw in Cala counts as a tool result, so reuse its ids and URLs and call tools only for what it doesn't show.
@@ -504,9 +509,10 @@ export function createMatchupService(deps: MatchupDeps) {
               id: part.toolCallId,
               tool: part.toolName,
               ok: !failed,
+              // Without the "Error calling tool 'x':" lead-in, so the status code shows first.
               summary: failed
                 ? details
-                  ? `Cala: ${details}`
+                  ? `Cala: ${details.replace(/^Error calling tool '[^']*':\s*/, "")}`
                   : "Cala returned an error"
                 : part.toolName === "entity_introspection"
                   ? "Schema read"

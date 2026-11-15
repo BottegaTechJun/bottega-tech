@@ -8,6 +8,7 @@ import {
 } from "@repo/shared";
 import { jsonSchema, simulateReadableStream, tool } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import { createGate, paced } from "./matchup.agent";
 import {
   backing,
   createLedger,
@@ -674,13 +675,110 @@ describe("evidence", () => {
   });
 });
 
+describe("paced Cala tools", () => {
+  const busy = {
+    isError: true,
+    content: [
+      {
+        type: "text",
+        text: "Error calling tool 'entity_retrieval': HTTP error 429: Too Many Requests - {'error': 'rate_limit_exceeded'}",
+      },
+    ],
+  };
+  const context = { toolCallId: "t", messages: [], context: {} };
+
+  /** One Cala tool that answers with `results` in turn, wrapped with no real waiting. */
+  function wrapped(results: unknown[], gate = createGate(3)) {
+    let calls = 0;
+    const waits: number[] = [];
+    const tools = paced(
+      {
+        entity_retrieval: tool({
+          inputSchema: jsonSchema<{ entity_id: string }>({ type: "object" }),
+          execute: async () => {
+            const next = results[Math.min(calls++, results.length - 1)];
+            if (next instanceof Error) throw next;
+            return next;
+          },
+        }),
+      },
+      {
+        gate,
+        delays: [10, 20],
+        sleep: async (ms) => {
+          waits.push(ms);
+        },
+      },
+    );
+    const run = () => tools.entity_retrieval?.execute?.({ entity_id: ROUND }, context);
+    return { run, waits, calls: () => calls };
+  }
+
+  test("let only a few calls of a burst reach Cala at once", async () => {
+    let active = 0;
+    let peak = 0;
+    const tools = paced(
+      {
+        entity_retrieval: tool({
+          inputSchema: jsonSchema<{ entity_id: string }>({ type: "object" }),
+          execute: async () => {
+            peak = Math.max(peak, ++active);
+            await Bun.sleep(5);
+            active--;
+            return retrieval;
+          },
+        }),
+      },
+      { gate: createGate(3), delays: [], sleep: async () => undefined },
+    );
+    // One agent step of 8 parallel calls, like the one Cala rejected.
+    const burst = Array.from({ length: 8 }, () =>
+      tools.entity_retrieval?.execute?.({ entity_id: ROUND }, context),
+    );
+    expect(await Promise.all(burst)).toEqual(Array(8).fill(retrieval));
+    expect(peak).toBe(3);
+  });
+
+  test("retry a call Cala turned away for being busy", async () => {
+    const limited = wrapped([busy, new Error("HTTP error 503: unavailable"), retrieval]);
+    expect(await limited.run()).toBe(retrieval);
+    expect(limited.calls()).toBe(3);
+  });
+
+  test("hold every call, not only the failed one, after Cala says it is busy", async () => {
+    const gate = createGate(3);
+    const limited = wrapped([busy, retrieval], gate);
+    await limited.run();
+    // The pause is shared: a call that never failed must still wait it out.
+    expect(gate.wait()).toBeGreaterThan(0);
+    const other = wrapped([retrieval], gate);
+    await other.run();
+    expect(other.waits[0]).toBeGreaterThan(0);
+  });
+
+  test("pass the failure on after the last try", async () => {
+    const down = wrapped([busy]);
+    expect(await down.run()).toBe(busy);
+    expect(down.calls()).toBe(3);
+  });
+
+  test("never retry a call that was simply wrong", async () => {
+    const wrong = { isError: true, content: [{ type: "text", text: "HTTP error 404: Not found" }] };
+    const missing = wrapped([wrong, retrieval]);
+    expect(await missing.run()).toBe(wrong);
+    expect(missing.calls()).toBe(1);
+    expect(missing.waits).toEqual([]);
+  });
+});
+
 describe("instructions", () => {
   test("give today's date, the evidence rule and Cala's field names", () => {
     for (const followUp of [true, false]) {
       const text = instructions(followUp, new Date("2026-11-14T10:00:00Z"));
       expect(text).toContain("Today is 2026-11-14.");
       expect(text).toContain("Every suggested investor needs evidence");
-      expect(text).toContain("entity_introspection first");
+      expect(text).toContain("don't call entity_introspection up front");
+      expect(text).toContain("call entity_introspection once for that entity");
       expect(text.includes("This is a follow-up")).toBe(followUp);
     }
   });
