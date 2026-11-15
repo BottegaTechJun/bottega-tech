@@ -5,6 +5,7 @@ import { ChevronRight, CircleAlert, FileText, Network, Route } from "lucide-reac
 import type { Run } from "@/lib/matchup";
 import { type Route as Path, routes } from "./graph";
 import { Mark } from "./mark";
+import { TraceList } from "./trace-panel";
 
 export interface Brief {
   entity: Entity;
@@ -70,11 +71,13 @@ interface Props {
   graph: () => void;
   /** Short run line, right of the heading */
   meta: React.ReactNode;
+  /** Side panel open on desktop, so the trace is already visible there */
+  panel: boolean;
 }
 
 /** Default results view: the suggested investors as a short ranked list. */
 export function Investors(props: Props) {
-  const { run, companyId, domains, selected, open, graph, meta } = props;
+  const { run, companyId, domains, selected, open, graph, meta, panel } = props;
   const rows = (run.graph?.investors ?? []).flatMap((p) => {
     const b = brief(run, p.id, companyId);
     return b ? [b] : [];
@@ -131,6 +134,23 @@ export function Investors(props: Props) {
               </p>
             )}
           </div>
+        ) : running && rows.length === 0 ? (
+          <>
+            {/* Live trace where the side panel is hidden; skeleton where it already shows it. */}
+            <div
+              className={`mt-2 rounded-2xl border border-line bg-panel px-4 py-3 ${panel ? "md:hidden" : ""}`}
+            >
+              <p className="pb-1 text-[12px] text-faint">The agent is searching Cala</p>
+              <TraceList run={run} />
+            </div>
+            {panel && (
+              <ul className="mt-2 hidden divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel md:block">
+                {[0, 1, 2, 3].map((n) => (
+                  <Skeleton key={n} n={n} />
+                ))}
+              </ul>
+            )}
+          </>
         ) : (
           <ul className="mt-2 divide-y divide-line overflow-hidden rounded-2xl border border-line bg-panel">
             {rows.map((row, i) => (
@@ -142,7 +162,6 @@ export function Investors(props: Props) {
                 <Row row={row} domains={domains} active={selected === row.entity.id} open={open} />
               </li>
             ))}
-            {running && rows.length === 0 && [0, 1, 2, 3].map((n) => <Skeleton key={n} n={n} />)}
           </ul>
         )}
       </div>

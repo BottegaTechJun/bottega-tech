@@ -102,7 +102,7 @@ export function TraceList({ run }: { run: Run }) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: follow the newest step while live
   useEffect(() => {
-    if (live) end.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    if (live) end.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [size, live]);
 
   if (groups.length === 0) {
