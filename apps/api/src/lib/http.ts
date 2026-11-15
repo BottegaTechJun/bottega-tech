@@ -49,7 +49,7 @@ function corsHeaders(corsOrigin: string, origin: string | null): Record<string, 
   return {
     "Access-Control-Allow-Origin": match,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "X-Content-Type-Options": "nosniff",
     Vary: "Origin",
   };

@@ -60,7 +60,9 @@ src/
   its answer in the tool results (unknown ids and URLs are dropped). Each authenticated run is
   saved as one row in `investor_search_sessions`, together with its founder input and replay events.
 - **Ownership**: private matchup routes accept only the server-side proxy boundary
-  (`INTERNAL_API_SECRET` plus the authenticated user id). Public company data remains cacheable;
+  (`INTERNAL_API_SECRET` plus the authenticated user id). `POST /api/matchup` also accepts a
+  5-minute HMAC bearer token from the webapp's `/api/stream-token`, so long SSE runs skip the
+  Vercel proxy and its time cap. Public company data remains cacheable;
   search sessions are always queried by `(user_id, id)`.
 - **Follow-ups**: a matchup request with `followUp: { question, parent? }` (needs `profileId`)
   revises a finished profile run instead of starting over. The API loads the parent run itself
