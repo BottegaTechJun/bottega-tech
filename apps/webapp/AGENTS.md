@@ -22,6 +22,11 @@ Steps live in the URL (`/?step=find|confirm|prefs`). Deep links to steps not rea
 Progress lives in user-namespaced localStorage (`src/lib/store.ts`), validated with zod on read.
 Private search history requires the NextAuth session.
 
+If the API did not save a finished run (it is missing from `GET /search-sessions` afterwards), the
+canvas keeps it in user-namespaced localStorage (`src/lib/local.ts`, newest 10). The sidebar and
+history merge those in, marked "this browser only". Follow-ups on a local-only run still fail,
+because the API loads the parent run from the database.
+
 ## Layout
 
 ```

@@ -3,8 +3,10 @@
 import type { SearchSessionSummary } from "@repo/shared";
 import { X } from "lucide-react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useState } from "react";
 import { announce, api, PROFILES_CHANGED } from "@/lib/api";
+import { local } from "@/lib/local";
 import { summary } from "@/lib/prefs";
 import { useProgress } from "@/lib/store";
 import { Logo } from "./logo";
@@ -12,15 +14,20 @@ import { Logo } from "./logo";
 /** User-owned investor searches in the sidebar. */
 export function Profiles({ active }: { active?: string | null }) {
   const { setState } = useProgress();
+  const userId = useSession().data?.user?.id ?? null;
   const [list, setList] = useState<SearchSessionSummary[] | null>(null);
+  const [mine, setMine] = useState<Set<string>>(new Set());
   const [sure, setSure] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api
       .searches()
-      .then(setList)
-      .catch(() => setList([]));
-  }, []);
+      .catch(() => [])
+      .then((saved) => {
+        setMine(new Set(userId ? local.ids(userId) : []));
+        setList(userId ? local.merge(userId, saved) : saved);
+      });
+  }, [userId]);
 
   useEffect(() => {
     load();
@@ -38,7 +45,8 @@ export function Profiles({ active }: { active?: string | null }) {
 
   const remove = async (id: string) => {
     setSure(null);
-    await api.removeSearch(id).catch(() => undefined);
+    if (userId && mine.has(id)) local.remove(userId, id);
+    else await api.removeSearch(id).catch(() => undefined);
     announce();
   };
 
@@ -61,6 +69,7 @@ export function Profiles({ active }: { active?: string | null }) {
                 <span className="block truncate text-sm">{p.input.company.name}</span>
                 <span className="block truncate text-xs text-faint">
                   {summary(p.input.prefs)} · {sessionResult(p)}
+                  {mine.has(p.id) && " · this browser only"}
                 </span>
               </span>
             </Link>
