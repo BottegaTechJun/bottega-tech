@@ -7,13 +7,26 @@ import {
   type MatchupReplay,
   type MatchupRequest,
   matchupEventSchema,
+  matchupStartedSchema,
 } from "@repo/shared";
 
 const PRIVATE_API_URL = "/api/backend";
 
 // ---------- Stream client ----------
 
-/** Posts a lookup and calls `onEvent` for every Server-Sent Event until the stream ends. */
+async function failure(res: Response): Promise<Error> {
+  const body: unknown = await res.json().catch(() => undefined);
+  const parsed = apiErrorSchema.safeParse(body);
+  return new Error(parsed.success ? parsed.data.error.message : `Request failed (${res.status})`);
+}
+
+// Network drops in a row before the client gives up on a run.
+const RETRIES = 5;
+
+/**
+ * Starts a background run, then reads its events over SSE. Each connection is cut before the
+ * host's time limit, so this reconnects with `Last-Event-ID` until the run ends.
+ */
 export async function streamMatchup(
   req: MatchupRequest,
   onEvent: (event: MatchupEvent) => void,
@@ -25,42 +38,81 @@ export async function streamMatchup(
     body: JSON.stringify(req),
     signal,
   });
-  if (!res.ok || !res.body) {
-    const body: unknown = await res.json().catch(() => undefined);
-    const parsed = apiErrorSchema.safeParse(body);
-    throw new Error(parsed.success ? parsed.data.error.message : `Request failed (${res.status})`);
-  }
+  if (!res.ok) throw await failure(res);
+  const { runId } = matchupStartedSchema.parse(await res.json());
+  const url = `${PRIVATE_API_URL}/matchup/${encodeURIComponent(runId)}`;
+
+  // Aborting stops the run on the server too; a closed tab lets it finish and save.
+  const stop = () => void fetch(url, { method: "DELETE", keepalive: true }).catch(() => {});
+  signal.addEventListener("abort", stop, { once: true });
+
+  let last: string | null = null;
+  let ended = false;
+  let drops = 0;
 
   const dispatch = (frame: string) => {
-    const data = frame
-      .split("\n")
+    const lines = frame.split("\n");
+    const id = lines.find((line) => line.startsWith("id:"));
+    if (id) last = id.slice(3).trim();
+    const data = lines
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trim())
       .join("");
     if (!data) return;
     try {
       const parsed = matchupEventSchema.safeParse(JSON.parse(data));
-      if (parsed.success) onEvent(parsed.data);
+      if (!parsed.success) return;
+      if (parsed.data.type === "done" || parsed.data.type === "error") ended = true;
+      onEvent(parsed.data);
     } catch {
       // Ignore malformed or truncated SSE payloads
     }
   };
 
-  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = "";
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += value;
-    let cut = buffer.indexOf("\n\n");
-    while (cut >= 0) {
-      const frame = buffer.slice(0, cut);
-      buffer = buffer.slice(cut + 2);
-      cut = buffer.indexOf("\n\n");
-      dispatch(frame);
+  try {
+    while (!ended) {
+      signal.throwIfAborted();
+      const seen = last;
+      let events: Response;
+      try {
+        events = await fetch(`${url}/events`, {
+          headers: last === null ? {} : { "Last-Event-ID": last },
+          cache: "no-store",
+          signal,
+        });
+      } catch (err) {
+        if (signal.aborted || ++drops > RETRIES) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 1000 * drops));
+        continue;
+      }
+      // 204: the run finished and every event was already read.
+      if (events.status === 204) return;
+      if (!events.ok || !events.body) throw await failure(events);
+
+      const reader = events.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = "";
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += value;
+          let cut = buffer.indexOf("\n\n");
+          while (cut >= 0) {
+            const frame = buffer.slice(0, cut);
+            buffer = buffer.slice(cut + 2);
+            cut = buffer.indexOf("\n\n");
+            dispatch(frame);
+          }
+        }
+      } catch (err) {
+        if (signal.aborted) throw err;
+      }
+      drops = last === seen ? drops + 1 : 0;
+      if (drops > RETRIES) throw new Error("Lost the connection to the run");
     }
+  } finally {
+    signal.removeEventListener("abort", stop);
   }
-  if (buffer.trim()) dispatch(buffer);
 }
 
 // ---------- Run state ----------
