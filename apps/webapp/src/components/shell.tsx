@@ -19,7 +19,7 @@ interface Props {
 export function Shell({ active, profile, company, aside, children }: Props) {
   const items = [
     { id: "start", href: "/", label: "Home", icon: Rocket },
-    { id: "paths", href: "/warm-paths", label: "Warm paths", icon: Network },
+    { id: "paths", href: "/warm-paths", label: "Leads", icon: Network },
   ] as const;
 
   return (
