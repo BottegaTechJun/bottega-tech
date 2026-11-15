@@ -143,8 +143,7 @@ export function createCalaTools(apiKey: string) {
     if (!client) client = connect();
     const current = client;
     try {
-      const { knowledge_search: _slow, ...rest } = await (await current).tools();
-      return paced(rest, { gate });
+      return paced(await (await current).tools(), { gate });
     } catch (err) {
       if (client === current) client = undefined;
       throw err;
