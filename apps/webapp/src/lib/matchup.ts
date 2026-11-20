@@ -9,24 +9,9 @@ import {
   matchupEventSchema,
 } from "@repo/shared";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const PRIVATE_API_URL = "/api/backend";
 
 // ---------- Stream client ----------
-
-async function failure(res: Response): Promise<Error> {
-  const body: unknown = await res.json().catch(() => undefined);
-  const parsed = apiErrorSchema.safeParse(body);
-  return new Error(parsed.success ? parsed.data.error.message : `Request failed (${res.status})`);
-}
-
-/** Short-lived token from our Next server; the stream itself skips the Vercel proxy and its time cap. */
-async function streamToken(signal: AbortSignal): Promise<string> {
-  const res = await fetch("/api/stream-token", { cache: "no-store", signal });
-  if (!res.ok) throw await failure(res);
-  const body = (await res.json()) as { token?: unknown };
-  if (typeof body.token !== "string") throw new Error("Could not start the search");
-  return body.token;
-}
 
 /** Posts a lookup and calls `onEvent` for every Server-Sent Event until the stream ends. */
 export async function streamMatchup(
@@ -34,14 +19,17 @@ export async function streamMatchup(
   onEvent: (event: MatchupEvent) => void,
   signal: AbortSignal,
 ): Promise<void> {
-  const token = await streamToken(signal);
-  const res = await fetch(`${API_URL}/api/matchup`, {
+  const res = await fetch(`${PRIVATE_API_URL}/matchup`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
     signal,
   });
-  if (!res.ok || !res.body) throw await failure(res);
+  if (!res.ok || !res.body) {
+    const body: unknown = await res.json().catch(() => undefined);
+    const parsed = apiErrorSchema.safeParse(body);
+    throw new Error(parsed.success ? parsed.data.error.message : `Request failed (${res.status})`);
+  }
 
   const dispatch = (frame: string) => {
     const data = frame
